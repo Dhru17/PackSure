@@ -3,11 +3,12 @@ import { api } from '../../services/api';
 import { useAuthStore } from '../../state/authStore';
 import type { User, RegulatoryRule, AuditLog, ProductCategory } from '../../types';
 import {
-  ShieldAlert, RefreshCw, UserPlus, Key, Eye, EyeOff, Trash2, Power, BookPlus,
+  RefreshCw, UserPlus, Key, Eye, EyeOff, Trash2, Power, BookPlus,
   Edit3, FolderTree, FileText, Database, HardDrive, Cpu, Activity,
-  Search, CheckCircle, Layers, ArrowRight,
+  CheckCircle, Layers, ArrowRight,
   Settings, UserCheck, Shield, ChevronRight, X
 } from 'lucide-react';
+import { PageHeader, KpiCard, FilterBar } from '../../components/ui';
 
 type AdminTab = 'overview' | 'users' | 'rules' | 'categories' | 'audit' | 'settings';
 
@@ -557,95 +558,84 @@ export const AdminPortal: React.FC = () => {
   // ----------------------------------------------------
   return (
     <div className="space-y-6">
-      {/* Top Header & Executive Navigation */}
-      <div className="bg-white border border-[#D8DDE3] rounded-xl p-4 sm:p-5 shadow-xs flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="p-2.5 bg-[#EEF2F6] text-[#174A7E] rounded-xl border border-[#CBD5E1]">
-            <ShieldAlert className="w-6 h-6" />
-          </span>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-[#1E293B] tracking-tight">Admin Console</h1>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EEF2F6] text-[#174A7E] border border-[#CBD5E1]">
-                ADMIN RBAC
-              </span>
-            </div>
-            <p className="text-xs text-[#64748B]">
-              Department of Consumer Affairs &bull; Legal Metrology (Packaged Commodities) Rules Governance
-            </p>
+      {/* Top Standard PageHeader & Executive Navigation */}
+      <PageHeader
+        sectionLabel="GOVERNANCE & RBAC"
+        title="Admin Console"
+        purpose="Department of Consumer Affairs &bull; Legal Metrology Rules Governance"
+        badge="ADMIN RBAC"
+        badgeVariant="blue"
+        action={
+          <div className="flex flex-wrap items-center bg-[#F1F5F9] p-1 rounded-lg border border-[#E2E8F0] gap-1">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'overview'
+                  ? 'bg-[#174A7E] text-white shadow-xs'
+                  : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
+              }`}
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Overview</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'users'
+                  ? 'bg-[#174A7E] text-white shadow-xs'
+                  : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
+              }`}
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>Users & Roles ({users.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('rules')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'rules'
+                  ? 'bg-[#174A7E] text-white shadow-xs'
+                  : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Rules ({rules.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('categories')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'categories'
+                  ? 'bg-[#174A7E] text-white shadow-xs'
+                  : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
+              }`}
+            >
+              <FolderTree className="w-3.5 h-3.5" />
+              <span>Categories ({categories.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'audit'
+                  ? 'bg-[#174A7E] text-white shadow-xs'
+                  : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Audit Log ({auditLogs.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
+                activeTab === 'settings'
+                  ? 'bg-[#174A7E] text-white shadow-xs'
+                  : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Settings</span>
+            </button>
           </div>
-        </div>
-
-        {/* 6-Tab Navigation Switcher */}
-        <div className="flex flex-wrap items-center bg-[#F1F5F9] p-1 rounded-lg border border-[#E2E8F0] gap-1">
-          <button
-            onClick={() => setActiveTab('overview')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'overview'
-                ? 'bg-[#174A7E] text-white shadow-xs'
-                : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
-            }`}
-          >
-            <Activity className="w-3.5 h-3.5" />
-            <span>Overview</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('users')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'users'
-                ? 'bg-[#174A7E] text-white shadow-xs'
-                : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
-            }`}
-          >
-            <UserCheck className="w-3.5 h-3.5" />
-            <span>Users & Roles ({users.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('rules')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'rules'
-                ? 'bg-[#174A7E] text-white shadow-xs'
-                : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Rules ({rules.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('categories')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'categories'
-                ? 'bg-[#174A7E] text-white shadow-xs'
-                : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
-            }`}
-          >
-            <FolderTree className="w-3.5 h-3.5" />
-            <span>Categories ({categories.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('audit')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'audit'
-                ? 'bg-[#174A7E] text-white shadow-xs'
-                : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            <span>Audit Log ({auditLogs.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('settings')}
-            className={`px-3.5 py-1.5 text-xs font-semibold rounded-md transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'settings'
-                ? 'bg-[#174A7E] text-white shadow-xs'
-                : 'text-[#64748B] hover:text-[#1E293B] hover:bg-white/60'
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Settings</span>
-          </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Action Notification Toast */}
       {actionNotice && (
@@ -656,7 +646,7 @@ export const AdminPortal: React.FC = () => {
           </div>
           <button
             onClick={() => setActionNotice(null)}
-            className="px-3 py-1 bg-white hover:bg-[#F8FAFC] text-[#1E293B] rounded-lg border border-[#CBD5E1] text-xs font-semibold transition"
+            className="px-3 py-1 bg-white hover:bg-[#F8FAFC] text-[#1E293B] rounded-lg border border-[#CBD5E1] text-xs font-semibold transition cursor-pointer"
           >
             Dismiss
           </button>
@@ -677,7 +667,7 @@ export const AdminPortal: React.FC = () => {
           </div>
           <button
             onClick={() => setLastCreatedUser(null)}
-            className="px-3 py-1.5 bg-white hover:bg-[#F8FAFC] text-[#1E293B] rounded-lg border border-[#CBD5E1] font-semibold self-start sm:self-auto"
+            className="px-3 py-1.5 bg-white hover:bg-[#F8FAFC] text-[#1E293B] rounded-lg border border-[#CBD5E1] font-semibold self-start sm:self-auto cursor-pointer"
           >
             Dismiss
           </button>
@@ -689,77 +679,40 @@ export const AdminPortal: React.FC = () => {
       {/* ======================================================== */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Executive Stat Cards */}
+          {/* Executive Stat Cards using standard KpiCard */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white border border-[#D8DDE3] rounded-xl p-4 sm:p-5 shadow-xs space-y-2">
-              <div className="flex items-center justify-between text-[#64748B]">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#475569]">Authorized Officers</span>
-                <span className="p-1.5 bg-[#EEF2F6] text-[#174A7E] rounded-md">
-                  <UserCheck className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-[#1E293B]">{users.length}</span>
-                <span className="text-xs text-[#15803D] font-bold">
-                  {users.filter(u => u.is_active).length} Active
-                </span>
-              </div>
-              <p className="text-[11px] text-[#64748B]">
-                {users.filter(u => u.role === 'INSPECTOR').length} Inspectors &bull; {users.filter(u => u.role === 'SENIOR_OFFICER').length} Senior Officers &bull; {users.filter(u => u.role === 'ADMIN').length} Admins
-              </p>
-            </div>
-
-            <div className="bg-white border border-[#D8DDE3] rounded-xl p-4 sm:p-5 shadow-xs space-y-2">
-              <div className="flex items-center justify-between text-[#64748B]">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#475569]">Metrology Rules</span>
-                <span className="p-1.5 bg-[#E0F2FE] text-[#0369A1] rounded-md">
-                  <Layers className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-[#1E293B]">{rules.length}</span>
-                <span className="text-xs text-[#15803D] font-bold">
-                  {rules.filter(r => r.is_active).length} Enforced
-                </span>
-              </div>
-              <p className="text-[11px] text-[#64748B]">
-                Legal Metrology (Packaged Commodities) Rules, 2011 and applicable amendments
-              </p>
-            </div>
-
-            <div className="bg-white border border-[#D8DDE3] rounded-xl p-4 sm:p-5 shadow-xs space-y-2">
-              <div className="flex items-center justify-between text-[#64748B]">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#475569]">Commodity Categories</span>
-                <span className="p-1.5 bg-[#FEF3C7] text-[#92400E] rounded-md">
-                  <FolderTree className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-[#1E293B]">{categories.length}</span>
-                <span className="text-xs text-[#64748B] font-semibold">
-                  {categories.reduce((acc, c) => acc + (c.products_count || 0), 0)} Products
-                </span>
-              </div>
-              <p className="text-[11px] text-[#64748B]">
-                Hierarchical taxonomy with statutory exemptions
-              </p>
-            </div>
-
-            <div className="bg-white border border-[#D8DDE3] rounded-xl p-4 sm:p-5 shadow-xs space-y-2">
-              <div className="flex items-center justify-between text-[#64748B]">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#475569]">Forensic Audit Logs</span>
-                <span className="p-1.5 bg-[#F0FDF4] text-[#15803D] rounded-md">
-                  <FileText className="w-4 h-4" />
-                </span>
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-[#1E293B]">{systemHealth?.database?.tables?.audit_logs || auditLogs.length}</span>
-                <span className="text-xs text-[#174A7E] font-mono font-semibold">Sec. 16 Compliant</span>
-              </div>
-              <p className="text-[11px] text-[#64748B]">
-                Immutable legal action audit trail
-              </p>
-            </div>
+            <KpiCard
+              label="Authorized Officers"
+              value={users.length}
+              subtext={`${users.filter(u => u.is_active).length} Active • ${users.filter(u => u.role === 'INSPECTOR').length} Inspectors`}
+              icon={<UserCheck className="w-4 h-4 text-[#174A7E]" />}
+              variant="primary"
+              onClick={() => setActiveTab('users')}
+            />
+            <KpiCard
+              label="Metrology Rules"
+              value={rules.length}
+              subtext={`${rules.filter(r => r.is_active).length} Active Enforced Rules`}
+              icon={<Layers className="w-4 h-4 text-[#0369A1]" />}
+              variant="default"
+              onClick={() => setActiveTab('rules')}
+            />
+            <KpiCard
+              label="Commodity Categories"
+              value={categories.length}
+              subtext={`${categories.reduce((acc, c) => acc + (c.products_count || 0), 0)} Products Classified`}
+              icon={<FolderTree className="w-4 h-4 text-[#92400E]" />}
+              variant="default"
+              onClick={() => setActiveTab('categories')}
+            />
+            <KpiCard
+              label="Forensic Audit Logs"
+              value={systemHealth?.database?.tables?.audit_logs || auditLogs.length}
+              subtext="Sec. 16 Compliant Immutable Trail"
+              icon={<FileText className="w-4 h-4 text-[#15803D]" />}
+              variant="success"
+              onClick={() => setActiveTab('audit')}
+            />
           </div>
 
           {/* System Telemetry & Rapid Health Overview */}
@@ -970,42 +923,40 @@ export const AdminPortal: React.FC = () => {
             </button>
           </div>
 
-          {/* Search and Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-[#F8F9FA] p-3 rounded-xl border border-[#E2E8F0]">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#94A3B8]" />
-              <input
-                type="text"
-                placeholder="Search name, email, badge, district..."
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                className="w-full bg-white border border-[#CBD5E1] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:border-[#174A7E]"
-              />
-            </div>
-            <div>
-              <select
-                value={userRoleFilter}
-                onChange={(e) => setUserRoleFilter(e.target.value)}
-                className="w-full bg-white border border-[#CBD5E1] rounded-lg px-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:border-[#174A7E]"
-              >
-                <option value="ALL">All Roles</option>
-                <option value="INSPECTOR">Inspector</option>
-                <option value="SENIOR_OFFICER">Senior Officer</option>
-                <option value="ADMIN">Admin</option>
-              </select>
-            </div>
-            <div>
-              <select
-                value={userStatusFilter}
-                onChange={(e) => setUserStatusFilter(e.target.value)}
-                className="w-full bg-white border border-[#CBD5E1] rounded-lg px-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:border-[#174A7E]"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="ACTIVE">Active Officers</option>
-                <option value="INACTIVE">Inactive Officers</option>
-              </select>
-            </div>
-          </div>
+          {/* Search and Filters via standard FilterBar */}
+          <FilterBar
+            searchValue={userSearch}
+            onSearchChange={setUserSearch}
+            searchPlaceholder="Search name, email, badge, district..."
+            filters={[
+              {
+                key: 'role',
+                value: userRoleFilter,
+                onChange: setUserRoleFilter,
+                options: [
+                  { value: 'ALL', label: 'All Roles' },
+                  { value: 'INSPECTOR', label: 'Inspector' },
+                  { value: 'SENIOR_OFFICER', label: 'Senior Officer' },
+                  { value: 'ADMIN', label: 'Admin' }
+                ]
+              },
+              {
+                key: 'status',
+                value: userStatusFilter,
+                onChange: setUserStatusFilter,
+                options: [
+                  { value: 'ALL', label: 'All Statuses' },
+                  { value: 'ACTIVE', label: 'Active Officers' },
+                  { value: 'INACTIVE', label: 'Inactive Officers' }
+                ]
+              }
+            ]}
+            onClearFilters={() => {
+              setUserSearch('');
+              setUserRoleFilter('ALL');
+              setUserStatusFilter('ALL');
+            }}
+          />
 
           {/* Officers Table - Desktop View */}
           <div className="hidden md:block overflow-x-auto border border-[#E2E8F0] rounded-xl">
@@ -1208,30 +1159,28 @@ export const AdminPortal: React.FC = () => {
             </div>
           </div>
 
-          {/* Search & Status Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#F8F9FA] p-3 rounded-xl border border-[#E2E8F0]">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#94A3B8]" />
-              <input
-                type="text"
-                placeholder="Search rule code, title, statutory citation..."
-                value={ruleSearch}
-                onChange={(e) => setRuleSearch(e.target.value)}
-                className="w-full bg-white border border-[#CBD5E1] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:border-[#174A7E]"
-              />
-            </div>
-            <div>
-              <select
-                value={ruleStatusFilter}
-                onChange={(e) => setRuleStatusFilter(e.target.value)}
-                className="w-full bg-white border border-[#CBD5E1] rounded-lg px-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:border-[#174A7E]"
-              >
-                <option value="ALL">All Enforcement Statuses</option>
-                <option value="ACTIVE">Enforced Rules (Active)</option>
-                <option value="INACTIVE">Deprecated / Inactive Rules</option>
-              </select>
-            </div>
-          </div>
+          {/* Search & Status Filters via standard FilterBar */}
+          <FilterBar
+            searchValue={ruleSearch}
+            onSearchChange={setRuleSearch}
+            searchPlaceholder="Search rule code, title, statutory citation..."
+            filters={[
+              {
+                key: 'status',
+                value: ruleStatusFilter,
+                onChange: setRuleStatusFilter,
+                options: [
+                  { value: 'ALL', label: 'All Enforcement Statuses' },
+                  { value: 'ACTIVE', label: 'Enforced Rules (Active)' },
+                  { value: 'INACTIVE', label: 'Deprecated / Inactive Rules' }
+                ]
+              }
+            ]}
+            onClearFilters={() => {
+              setRuleSearch('');
+              setRuleStatusFilter('ALL');
+            }}
+          />
 
           {/* Grouped Requirement Version Trees */}
           <div className="space-y-4">
@@ -1473,34 +1422,32 @@ export const AdminPortal: React.FC = () => {
             </button>
           </div>
 
-          {/* Search & Action Type Filters */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-[#F8F9FA] p-3 rounded-xl border border-[#E2E8F0]">
-            <div className="relative">
-              <Search className="w-4 h-4 absolute left-3 top-2.5 text-[#94A3B8]" />
-              <input
-                type="text"
-                placeholder="Search actor, entity, case ID, justification..."
-                value={auditSearch}
-                onChange={(e) => setAuditSearch(e.target.value)}
-                className="w-full bg-white border border-[#CBD5E1] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:border-[#174A7E]"
-              />
-            </div>
-            <div>
-              <select
-                value={auditActionFilter}
-                onChange={(e) => setAuditActionFilter(e.target.value)}
-                className="w-full bg-white border border-[#CBD5E1] rounded-lg px-3 py-1.5 text-xs text-[#1E293B] focus:outline-none focus:border-[#174A7E]"
-              >
-                <option value="ALL">All Action Types</option>
-                <option value="USER_MODIFIED">USER_MODIFIED</option>
-                <option value="RULE_MODIFIED">RULE_MODIFIED</option>
-                <option value="REVIEW_SUBMITTED">REVIEW_SUBMITTED</option>
-                <option value="SENIOR_ACTION">SENIOR_ACTION</option>
-                <option value="CASE_CREATED">CASE_CREATED</option>
-                <option value="REPORT_GENERATED">REPORT_GENERATED</option>
-              </select>
-            </div>
-          </div>
+          {/* Search & Action Type Filters via standard FilterBar */}
+          <FilterBar
+            searchValue={auditSearch}
+            onSearchChange={setAuditSearch}
+            searchPlaceholder="Search actor, entity, case ID, justification..."
+            filters={[
+              {
+                key: 'actionType',
+                value: auditActionFilter,
+                onChange: setAuditActionFilter,
+                options: [
+                  { value: 'ALL', label: 'All Action Types' },
+                  { value: 'USER_MODIFIED', label: 'USER_MODIFIED' },
+                  { value: 'RULE_MODIFIED', label: 'RULE_MODIFIED' },
+                  { value: 'REVIEW_SUBMITTED', label: 'REVIEW_SUBMITTED' },
+                  { value: 'SENIOR_ACTION', label: 'SENIOR_ACTION' },
+                  { value: 'CASE_CREATED', label: 'CASE_CREATED' },
+                  { value: 'REPORT_GENERATED', label: 'REPORT_GENERATED' }
+                ]
+              }
+            ]}
+            onClearFilters={() => {
+              setAuditSearch('');
+              setAuditActionFilter('ALL');
+            }}
+          />
 
           {/* Audit Logs Table - Desktop View */}
           <div className="hidden md:block overflow-x-auto border border-[#E2E8F0] rounded-xl">
