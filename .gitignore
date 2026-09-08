@@ -1,0 +1,112 @@
+# =========================
+# Python & Virtual Environments
+# =========================
+venv/
+.venv/
+env/
+ENV/
+server/venv/
+server/.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# =========================
+# Environment & Secrets
+# =========================
+.env
+.env.*
+*.env
+!.env.example
+!.env.template
+
+# =========================
+# Local Databases & Journals
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+server/data/*.db
+server/data/*.sqlite*
+
+# =========================
+# Generated / Runtime & Media Files
+# =========================
+server/data/uploads/*
+!server/data/uploads/.gitkeep
+server/data/reports/*
+!server/data/reports/.gitkeep
+server/uploads/
+server/reports/
+server/generated/
+uploads/
+reports/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =========================
+# Node / React
+# =========================
+node_modules/
+client/node_modules/
+client/dist/
+dist/
+dist-ssr/
+client/.vite/
+.vite/
+*.local
+.eslintcache
+
+# =========================
+# IDE & Editors
+# =========================
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# =========================
+# OS Artifacts
+# =========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
