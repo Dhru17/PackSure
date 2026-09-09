@@ -16,6 +16,7 @@ from blueprints.rules_bp import rules_bp
 from blueprints.reports_bp import reports_bp
 from blueprints.analytics_bp import analytics_bp
 from blueprints.admin_bp import admin_bp
+from blueprints.company_bp import company_bp
 
 migrate = Migrate()
 
@@ -36,6 +37,7 @@ def create_app(config_class=Config):
     app.register_blueprint(reports_bp)
     app.register_blueprint(analytics_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(company_bp)
 
     @app.route("/api/media/uploads/<filename>")
     def serve_upload(filename):

@@ -1,5 +1,10 @@
+# ==============================================================================
+# Packsure — Production & Development .gitignore
+# Legal Metrology Inspection & Compliance Platform (SIH26034)
+# ==============================================================================
+
 # =========================
-# Python & Virtual Environments
+# 1. Python & Virtual Environments
 # =========================
 venv/
 .venv/
@@ -7,6 +12,9 @@ env/
 ENV/
 server/venv/
 server/.venv/
+**/venv/
+**/.venv/
+**/env/
 __pycache__/
 **/__pycache__/
 *.py[cod]
@@ -29,15 +37,27 @@ wheels/
 .installed.cfg
 *.egg
 
-# Testing & Coverage
+# =========================
+# 2. Testing, Coverage & Typecheck Caches
+# =========================
 .pytest_cache/
+**/.pytest_cache/
+server/.pytest_cache/
 .mypy_cache/
+**/.mypy_cache/
 .ruff_cache/
+**/.ruff_cache/
 .coverage
+.coverage.*
+coverage/
 htmlcov/
+.nyc_output/
+*.tsbuildinfo
+client/*.tsbuildinfo
+**/*.tsbuildinfo
 
 # =========================
-# Environment & Secrets
+# 3. Environment & Secret Variables
 # =========================
 .env
 .env.*
@@ -46,7 +66,7 @@ htmlcov/
 !.env.template
 
 # =========================
-# Local Databases & Journals
+# 4. Local Databases & SQLite Storage
 # =========================
 *.db
 *.sqlite
@@ -54,53 +74,82 @@ htmlcov/
 *.db-journal
 *.db-wal
 *.db-shm
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
 server/data/*.db
 server/data/*.sqlite*
 
 # =========================
-# Generated / Runtime & Media Files
+# 5. Generated Runtime Data, Media & Reports
 # =========================
 server/data/uploads/*
 !server/data/uploads/.gitkeep
 server/data/reports/*
 !server/data/reports/.gitkeep
+server/data/signatures/*
+!server/data/signatures/.gitkeep
+server/data/evidences/*
+!server/data/evidences/.gitkeep
 server/uploads/
 server/reports/
 server/generated/
 uploads/
 reports/
+temp/
+tmp/
+*.pdf.tmp
+
+# =========================
+# 6. Logs & Debug Artifacts
+# =========================
 *.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+vite.log*
 
 # =========================
-# Node / React
+# 7. Node / React / Vite Frontend
 # =========================
 node_modules/
 client/node_modules/
+**/node_modules/
 client/dist/
 dist/
 dist-ssr/
 client/.vite/
 .vite/
+**/.vite/
 *.local
 .eslintcache
+.turbo/
+.rollup.cache/
 
 # =========================
-# IDE & Editors
+# 8. IDE, Editors & History
 # =========================
-.vscode/
+.vscode/*
 !.vscode/extensions.json
+!.vscode/launch.json
 .idea/
 *.swp
 *.swo
 *~
+*.bak
+*.orig
+*.rej
+.history/
 *.sublime-project
 *.sublime-workspace
 
 # =========================
-# OS Artifacts
+# 9. OS Metadata Artifacts
 # =========================
 .DS_Store
 .DS_Store?
@@ -109,4 +158,6 @@ client/.vite/
 .Trashes
 ehthumbs.db
 Thumbs.db
+Thumbs.db:encryptable
 desktop.ini
+$RECYCLE.BIN/

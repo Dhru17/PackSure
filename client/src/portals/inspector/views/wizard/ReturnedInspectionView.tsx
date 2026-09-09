@@ -51,6 +51,9 @@ export const ReturnedInspectionView: React.FC<ReturnedInspectionViewProps> = ({
               <span className="font-mono text-xs font-bold text-[#991B1B] bg-[#FEF2F2] px-2 py-0.5 rounded border border-[#FECACA]">
                 #{caseNumber}
               </span>
+              <span className="text-xs font-bold text-[#475569] bg-[#F1F5F9] px-2 py-0.5 rounded border border-[#CBD5E1]">
+                Cycle {c.review_cycle || 1}
+              </span>
             </div>
             <p className="text-xs text-[#64748B] mt-0.5">
               {productName} ({brandName}) &bull; Returned on {formatDate(c.submitted_at || c.created_at)}

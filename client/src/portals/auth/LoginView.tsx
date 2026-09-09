@@ -31,6 +31,7 @@ export const LoginView: React.FC = () => {
     if (roleEmail.includes('inspector')) setPassword('Inspector#2026');
     else if (roleEmail.includes('senior')) setPassword('Senior#2026');
     else if (roleEmail.includes('admin')) setPassword('Admin#2026');
+    else if (roleEmail.includes('britannia') || roleEmail.includes('company')) setPassword('Company#2026');
     else setPassword('Inspector#2026');
     setError(null);
   };
@@ -122,7 +123,21 @@ export const LoginView: React.FC = () => {
               <UserCheck className="w-3.5 h-3.5 text-[#174A7E]" />
               <span>Select Authorized Role for Testing</span>
             </div>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('admin@legalmetrology.gov.in')}
+                className="px-2 py-2 text-xs font-semibold rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#334155] transition text-center cursor-pointer"
+              >
+                🛡️ Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('senior@legalmetrology.gov.in')}
+                className="px-2 py-2 text-xs font-semibold rounded-lg bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] transition text-center cursor-pointer"
+              >
+                ⚖️ Senior
+              </button>
               <button
                 type="button"
                 onClick={() => handleQuickLogin('inspector@legalmetrology.gov.in')}
@@ -132,17 +147,10 @@ export const LoginView: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickLogin('senior@legalmetrology.gov.in')}
-                className="px-2 py-2 text-xs font-semibold rounded-lg bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] transition text-center cursor-pointer"
+                onClick={() => handleQuickLogin('compliance@britannia.com')}
+                className="px-2 py-2 text-xs font-semibold rounded-lg bg-[#F5F3FF] hover:bg-[#EDE9FE] border border-[#DDD6FE] text-[#6B21A8] transition text-center cursor-pointer"
               >
-                ⚖️ Senior Officer
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin@legalmetrology.gov.in')}
-                className="px-2 py-2 text-xs font-semibold rounded-lg bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#334155] transition text-center cursor-pointer"
-              >
-                🛡️ Admin
+                🏢 Company
               </button>
             </div>
             <p className="mt-2 text-[11px] text-[#64748B] text-center">

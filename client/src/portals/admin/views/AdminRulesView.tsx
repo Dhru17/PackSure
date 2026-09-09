@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { 
   BookPlus, 
   Eye, 
-  Power 
+  Power,
+  TrendingUp
 } from 'lucide-react';
 import type { RegulatoryRule } from '../../../types';
 import { FilterBar, EmptyState } from '../../../components/ui';
@@ -12,13 +13,15 @@ interface AdminRulesViewProps {
   onOpenRuleDetail: (rule: RegulatoryRule) => void;
   onNewRule: () => void;
   onToggleStatus: (rule: RegulatoryRule) => void;
+  onOpenImpactSimulator?: (rule: RegulatoryRule) => void;
 }
 
 export const AdminRulesView: React.FC<AdminRulesViewProps> = ({
   rules,
   onOpenRuleDetail,
   onNewRule,
-  onToggleStatus
+  onToggleStatus,
+  onOpenImpactSimulator
 }) => {
   const [activeTab, setActiveTab] = useState<'ACTIVE' | 'DRAFT' | 'PREVIOUS'>('ACTIVE');
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,84 +62,102 @@ export const AdminRulesView: React.FC<AdminRulesViewProps> = ({
   ).filter(r => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchCode = r.rule_code.toLowerCase().includes(q);
-      const matchTitle = r.title.toLowerCase().includes(q);
-      const matchCitation = r.statutory_citation.toLowerCase().includes(q);
-      if (!matchCode && !matchTitle && !matchCitation) return false;
+      return (
+        r.rule_code.toLowerCase().includes(q) ||
+        r.title.toLowerCase().includes(q) ||
+        r.statutory_citation.toLowerCase().includes(q)
+      );
     }
-    if (statusFilter === 'ACTIVE' && !r.is_active) return false;
-    if (statusFilter === 'INACTIVE' && r.is_active) return false;
+    if (statusFilter !== 'ALL') {
+      const isActive = statusFilter === 'ACTIVE';
+      return r.is_active === isActive;
+    }
     return true;
   });
 
   return (
-    <div className="bg-white border border-[#D8DDE3] rounded-xl p-5 sm:p-6 shadow-xs space-y-5">
-      {/* Header & Tabs */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E2E8F0] pb-4">
+    <div className="space-y-6">
+      {/* Top Header */}
+      <div className="bg-white border border-[#D8DDE3] rounded-xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-base font-bold text-[#1E293B]">Legal Metrology Regulatory Rules</h2>
-          <p className="text-xs text-[#64748B]">Manage compliance requirements, version history, and statutory citations</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3 self-start md:self-auto">
-          {/* Tab Switcher */}
-          <div className="flex items-center gap-1.5 bg-[#F8F9FA] p-1 rounded-xl border border-[#D8DDE3]">
-            <button
-              onClick={() => setActiveTab('ACTIVE')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
-                activeTab === 'ACTIVE'
-                  ? 'bg-[#174A7E] text-white shadow-2xs'
-                  : 'text-[#64748B] hover:text-[#1E293B]'
-              }`}
-            >
-              Active ({activeRulesList.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('DRAFT')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
-                activeTab === 'DRAFT'
-                  ? 'bg-[#174A7E] text-white shadow-2xs'
-                  : 'text-[#64748B] hover:text-[#1E293B]'
-              }`}
-            >
-              Draft ({draftRulesList.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('PREVIOUS')}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer ${
-                activeTab === 'PREVIOUS'
-                  ? 'bg-[#174A7E] text-white shadow-2xs'
-                  : 'text-[#64748B] hover:text-[#1E293B]'
-              }`}
-            >
-              Previous Versions ({previousRulesList.length})
-            </button>
+          <div className="flex items-center gap-2">
+            <h1 className="text-base font-bold text-[#1E293B]">Regulatory Rule Book</h1>
+            <span className="px-2 py-0.5 text-[10px] font-bold bg-[#EFF6FF] text-[#174A7E] border border-[#BFDBFE] rounded-md">
+              Versioned Rules
+            </span>
           </div>
-
+          <p className="text-xs text-[#64748B] mt-0.5">
+            Legal Metrology (Packaged Commodities) statutory requirements and version governance
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {rules.length > 0 && onOpenImpactSimulator && (
+            <button
+              onClick={() => onOpenImpactSimulator(rules[0])}
+              className="px-3.5 py-2 bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Impact Simulator (#9)</span>
+            </button>
+          )}
           <button
             onClick={onNewRule}
             className="px-4 py-2 bg-[#174A7E] hover:bg-[#0F3B66] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
           >
             <BookPlus className="w-4 h-4" />
-            <span>Add Rule</span>
+            <span>Publish New Rule</span>
           </button>
         </div>
       </div>
 
-      {/* Search & Filter Bar */}
+      {/* Tabs */}
+      <div className="flex border-b border-[#D8DDE3] gap-6">
+        <button
+          onClick={() => setActiveTab('ACTIVE')}
+          className={`pb-3 text-xs font-bold transition border-b-2 cursor-pointer ${
+            activeTab === 'ACTIVE'
+              ? 'border-[#174A7E] text-[#174A7E]'
+              : 'border-transparent text-[#64748B] hover:text-[#1E293B]'
+          }`}
+        >
+          Active Enforced Rules ({activeRulesList.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('DRAFT')}
+          className={`pb-3 text-xs font-bold transition border-b-2 cursor-pointer ${
+            activeTab === 'DRAFT'
+              ? 'border-[#174A7E] text-[#174A7E]'
+              : 'border-transparent text-[#64748B] hover:text-[#1E293B]'
+          }`}
+        >
+          Draft / Upcoming Amendments ({draftRulesList.length})
+        </button>
+        <button
+          onClick={() => setActiveTab('PREVIOUS')}
+          className={`pb-3 text-xs font-bold transition border-b-2 cursor-pointer ${
+            activeTab === 'PREVIOUS'
+              ? 'border-[#174A7E] text-[#174A7E]'
+              : 'border-transparent text-[#64748B] hover:text-[#1E293B]'
+          }`}
+        >
+          Superseded Historical Versions ({previousRulesList.length})
+        </button>
+      </div>
+
+      {/* Filter and Search */}
       <FilterBar
         searchValue={searchQuery}
         onSearchChange={setSearchQuery}
-        searchPlaceholder="Search by rule name or code..."
+        searchPlaceholder="Search rule code, title, statutory citation..."
         filters={[
           {
             key: 'status',
             value: statusFilter,
             onChange: setStatusFilter,
             options: [
-              { value: 'ALL', label: 'All Statuses' },
-              { value: 'ACTIVE', label: 'Active Rules Only' },
-              { value: 'INACTIVE', label: 'Draft / Inactive Rules Only' }
+              { label: 'All Statuses', value: 'ALL' },
+              { label: 'Active', value: 'ACTIVE' },
+              { label: 'Inactive / Superseded', value: 'INACTIVE' }
             ]
           }
         ]}
@@ -161,16 +182,16 @@ export const AdminRulesView: React.FC<AdminRulesViewProps> = ({
           }
         />
       ) : (
-        <div className="overflow-x-auto border border-[#E2E8F0] rounded-xl">
+        <div className="overflow-x-auto border border-[#E2E8F0] rounded-xl bg-white shadow-xs">
           <table className="w-full text-left text-xs text-[#1E293B]">
             <thead className="bg-[#F8F9FA] text-[#475569] font-bold border-b border-[#E2E8F0]">
               <tr>
-                <th className="p-3.5">Rule Name</th>
+                <th className="p-3.5">Rule Specification</th>
                 <th className="p-3.5">Code</th>
                 <th className="p-3.5">Version</th>
                 <th className="p-3.5">Effective Date</th>
                 <th className="p-3.5">Status</th>
-                <th className="p-3.5 text-right">Action</th>
+                <th className="p-3.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#E2E8F0] bg-white">
@@ -206,6 +227,17 @@ export const AdminRulesView: React.FC<AdminRulesViewProps> = ({
                   </td>
                   <td className="p-3.5 text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
+                      {onOpenImpactSimulator && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenImpactSimulator(r)}
+                          className="px-2.5 py-1.5 bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#15803D] rounded-lg border border-[#BBF7D0] font-bold text-[11px] transition inline-flex items-center gap-1 cursor-pointer"
+                          title="Simulate Regulatory Change Impact (#9)"
+                        >
+                          <TrendingUp className="w-3.5 h-3.5" />
+                          <span>Impact</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => onToggleStatus(r)}

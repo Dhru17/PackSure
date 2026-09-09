@@ -96,13 +96,14 @@ export const InspectionWizard: React.FC<InspectionWizardProps> = ({
   };
 
   // Step 5: Submit for Senior Review
-  const handleStep5Submit = async () => {
+  const handleStep5Submit = async (signerName?: string) => {
     if (!activeCase) return;
     setIsSubmitting(true);
     try {
       await api.submitInspectorReview(activeCase.id, {
         remarks: inspectorRemarks,
-        corrections: corrections
+        corrections: corrections,
+        signed_by_name: signerName
       });
       setSubmissionSuccess(true);
       onRefreshData();

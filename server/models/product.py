@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 from . import db
 
 class Manufacturer(db.Model):
@@ -15,6 +15,7 @@ class Manufacturer(db.Model):
     contact_phone = db.Column(db.String(50), nullable=True)
     is_importer = db.Column(db.Boolean, default=False, nullable=False)
     registration_number = db.Column(db.String(100), nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
     
     # Analytics aggregation counters
     total_inspections = db.Column(db.Integer, default=0, nullable=False)
@@ -24,11 +25,14 @@ class Manufacturer(db.Model):
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
     products = db.relationship("Product", backref="manufacturer", lazy="select")
+    plants = db.relationship("Plant", backref="company", cascade="all, delete-orphan", lazy="select")
+    users = db.relationship("User", backref="company_profile", lazy="select")
 
     def to_dict(self):
         return {
             "id": self.id,
             "name": self.name,
+            "legal_name": self.legal_entity_name or self.name,
             "legal_entity_name": self.legal_entity_name,
             "address": self.address,
             "city": self.city,
@@ -38,10 +42,16 @@ class Manufacturer(db.Model):
             "contact_phone": self.contact_phone,
             "is_importer": self.is_importer,
             "registration_number": self.registration_number,
+            "is_active": self.is_active,
+            "plants_count": len(self.plants) if self.plants else 0,
+            "products_count": len(self.products) if self.products else 0,
             "total_inspections": self.total_inspections,
             "total_violations": self.total_violations,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
+
+# Alias Company to Manufacturer for clean architectural naming
+Company = Manufacturer
 
 class ProductCategory(db.Model):
     __tablename__ = "product_categories"

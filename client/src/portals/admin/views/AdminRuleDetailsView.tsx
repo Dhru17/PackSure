@@ -8,7 +8,11 @@ import {
   History, 
   Check, 
   FolderTree,
-  Power
+  Power,
+  TrendingUp,
+  Plus,
+  Trash2,
+  CheckSquare
 } from 'lucide-react';
 import type { RegulatoryRule, ProductCategory } from '../../../types';
 
@@ -20,6 +24,9 @@ interface AdminRuleDetailsViewProps {
   onEditRule: (rule: RegulatoryRule) => void;
   onNewVersion: (rule: RegulatoryRule) => void;
   onToggleStatus?: (rule: RegulatoryRule) => void;
+  onOpenImpactSimulator?: (rule: RegulatoryRule) => void;
+  onAddRequirement?: (rule: RegulatoryRule) => void;
+  onDeleteRequirement?: (ruleId: number, reqId: number) => void;
 }
 
 export const AdminRuleDetailsView: React.FC<AdminRuleDetailsViewProps> = ({
@@ -29,17 +36,22 @@ export const AdminRuleDetailsView: React.FC<AdminRuleDetailsViewProps> = ({
   onBack,
   onEditRule,
   onNewVersion,
-  onToggleStatus
+  onToggleStatus,
+  onOpenImpactSimulator,
+  onAddRequirement,
+  onDeleteRequirement
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'categories' | 'versions'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'requirements' | 'categories' | 'versions'>('overview');
 
   // Related versions of this rule code
   const versionHistory = allRuleVersions
-    .filter(r => r.rule_code === rule.rule_code)
+    .filter((r) => r.rule_code === rule.rule_code)
     .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }));
 
+  const requirements = rule.requirements || [];
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-150">
       {/* Top Header & Action Buttons */}
       <div className="bg-white border border-[#D8DDE3] rounded-xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -51,12 +63,22 @@ export const AdminRuleDetailsView: React.FC<AdminRuleDetailsViewProps> = ({
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
-            <h1 className="text-base font-bold text-[#1E293B]">Rule Details</h1>
-            <p className="text-xs text-[#64748B]">Statutory compliance requirement and automated check configuration</p>
+            <h1 className="text-base font-bold text-[#1E293B]">Rule Specification & Requirements</h1>
+            <p className="text-xs text-[#64748B]">Statutory compliance standard, versioning, and inspection checks</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onOpenImpactSimulator && (
+            <button
+              onClick={() => onOpenImpactSimulator(rule)}
+              className="px-3.5 py-2 bg-[#F0FDF4] hover:bg-[#DCFCE7] text-[#15803D] border border-[#BBF7D0] rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            >
+              <TrendingUp className="w-3.5 h-3.5" />
+              <span>Simulate Impact (#9)</span>
+            </button>
+          )}
+
           {onToggleStatus && (
             <button
               onClick={() => onToggleStatus(rule)}
@@ -70,6 +92,7 @@ export const AdminRuleDetailsView: React.FC<AdminRuleDetailsViewProps> = ({
               <span>{rule.is_active ? 'Deactivate' : 'Activate'}</span>
             </button>
           )}
+
           <button
             onClick={() => onNewVersion(rule)}
             className="px-3.5 py-2 bg-white hover:bg-[#F8FAFC] text-[#174A7E] rounded-lg text-xs font-bold border border-[#CBD5E1] flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
@@ -77,6 +100,7 @@ export const AdminRuleDetailsView: React.FC<AdminRuleDetailsViewProps> = ({
             <History className="w-3.5 h-3.5" />
             <span>Create New Version</span>
           </button>
+
           <button
             onClick={() => onEditRule(rule)}
             className="px-4 py-2 bg-[#174A7E] hover:bg-[#0F3B66] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
@@ -88,7 +112,7 @@ export const AdminRuleDetailsView: React.FC<AdminRuleDetailsViewProps> = ({
       </div>
 
       {/* Rule Identity Banner Card */}
-      <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-6 space-y-2">
+      <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-6 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-[#EBF3FA] text-[#174A7E] rounded-xl border border-[#CBD5E1]">
@@ -102,200 +126,345 @@ export const AdminRuleDetailsView: React.FC<AdminRuleDetailsViewProps> = ({
                     ? 'bg-[#DCFCE7] text-[#15803D] border-[#86EFAC]'
                     : 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
                 }`}>
-                  {rule.is_active ? 'Active' : 'Draft / Superseded'}
+                  {rule.is_active ? 'Active Version' : 'Draft / Superseded'}
                 </span>
               </div>
-              <p className="text-xs text-[#64748B] font-mono mt-1">
-                Rule Code: <strong className="text-[#174A7E]">{rule.rule_code}</strong> &bull; Version: <strong className="text-[#0369A1]">{rule.version}</strong>
-              </p>
+              <div className="flex items-center gap-3 text-xs text-[#64748B] mt-1">
+                <span>Code: <strong className="text-[#1E293B] font-mono">{rule.rule_code}</strong></span>
+                <span>•</span>
+                <span>Version: <strong className="text-[#0369A1] font-mono">{rule.version}</strong></span>
+                <span>•</span>
+                <span>Effective From: <strong className="text-[#1E293B]">{rule.effective_from || 'N/A'}</strong></span>
+                {rule.effective_to && (
+                  <>
+                    <span>•</span>
+                    <span>To: <strong className="text-[#1E293B]">{rule.effective_to}</strong></span>
+                  </>
+                )}
+              </div>
             </div>
           </div>
-
-          <div className="text-xs text-[#64748B] text-right space-y-0.5">
-            <div>Effective From: <strong className="text-[#1E293B]">{rule.effective_from ? new Date(rule.effective_from).toLocaleDateString() : '01 Jul 2011'}</strong></div>
-            <div>Expiry: <span className="text-[#15803D] font-semibold">{rule.effective_to ? new Date(rule.effective_to).toLocaleDateString() : 'No Expiry Date (Permanent)'}</span></div>
-          </div>
         </div>
+
+        <p className="text-xs text-[#475569] leading-relaxed pt-2 border-t border-[#F1F5F9]">
+          {rule.description}
+        </p>
       </div>
 
-      {/* Sub-Tabs */}
-      <div className="bg-white border border-[#D8DDE3] rounded-xl p-1.5 shadow-xs flex items-center gap-1.5">
+      {/* Tab Navigators */}
+      <div className="flex border-b border-[#D8DDE3] gap-6">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+          className={`pb-3 text-xs font-bold transition border-b-2 cursor-pointer ${
             activeTab === 'overview'
-              ? 'bg-[#174A7E] text-white shadow-2xs'
-              : 'text-[#64748B] hover:text-[#1E293B] hover:bg-[#F8FAFC]'
+              ? 'border-[#174A7E] text-[#174A7E]'
+              : 'border-transparent text-[#64748B] hover:text-[#1E293B]'
           }`}
         >
-          Overview
+          Rule Specification & Metadata
         </button>
+
+        <button
+          onClick={() => setActiveTab('requirements')}
+          className={`pb-3 text-xs font-bold transition border-b-2 cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'requirements'
+              ? 'border-[#174A7E] text-[#174A7E]'
+              : 'border-transparent text-[#64748B] hover:text-[#1E293B]'
+          }`}
+        >
+          <CheckSquare className="w-3.5 h-3.5" />
+          <span>Statutory Requirements ({requirements.length})</span>
+        </button>
+
         <button
           onClick={() => setActiveTab('categories')}
-          className={`px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+          className={`pb-3 text-xs font-bold transition border-b-2 cursor-pointer ${
             activeTab === 'categories'
-              ? 'bg-[#174A7E] text-white shadow-2xs'
-              : 'text-[#64748B] hover:text-[#1E293B] hover:bg-[#F8FAFC]'
+              ? 'border-[#174A7E] text-[#174A7E]'
+              : 'border-transparent text-[#64748B] hover:text-[#1E293B]'
           }`}
         >
-          Applicable Categories
+          Mapped Commodity Categories ({rule.categories_count ?? 0})
         </button>
+
         <button
           onClick={() => setActiveTab('versions')}
-          className={`px-4 py-2 text-xs font-bold rounded-lg transition cursor-pointer ${
+          className={`pb-3 text-xs font-bold transition border-b-2 cursor-pointer ${
             activeTab === 'versions'
-              ? 'bg-[#174A7E] text-white shadow-2xs'
-              : 'text-[#64748B] hover:text-[#1E293B] hover:bg-[#F8FAFC]'
+              ? 'border-[#174A7E] text-[#174A7E]'
+              : 'border-transparent text-[#64748B] hover:text-[#1E293B]'
           }`}
         >
           Version History ({versionHistory.length})
         </button>
       </div>
 
-      {/* TAB 1: OVERVIEW */}
+      {/* Tab 1: Overview */}
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Requirement Card */}
-          <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-6 space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
+          <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-5 space-y-4">
+            <h3 className="text-xs font-bold text-[#1E293B] uppercase tracking-wider flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
               <FileText className="w-4 h-4 text-[#174A7E]" />
-              <span>Human-Readable Requirement</span>
+              <span>Statutory Authority & Gazette Metadata</span>
             </h3>
-            <p className="text-xs text-[#334155] leading-relaxed bg-[#F8FAFC] p-4 rounded-xl border border-[#E2E8F0]">
-              {rule.description || 'Net quantity and mandatory consumer declarations must be clearly marked on the principal display panel in accordance with standard units.'}
-            </p>
-          </div>
 
-          {/* Check Configuration Card */}
-          <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-6 space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
-              <CheckCircle2 className="w-4 h-4 text-[#174A7E]" />
-              <span>Automated Check Configuration</span>
-            </h3>
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center gap-2.5 p-2 bg-[#F0FDF4] text-[#15803D] rounded-lg border border-[#DCFCE7] font-semibold">
-                <Check className="w-4 h-4" />
-                <span>Declaration Presence & Multi-Surface Detection</span>
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="font-semibold text-[#64748B] block mb-1">Government Authority</span>
+                <p className="font-medium text-[#1E293B] bg-[#F8FAFC] p-2.5 rounded-lg border border-[#E2E8F0]">
+                  {rule.government_authority || 'Department of Consumer Affairs, Ministry of Consumer Affairs, Food and Public Distribution, Government of India'}
+                </p>
               </div>
-              <div className="flex items-center gap-2.5 p-2 bg-[#F0FDF4] text-[#15803D] rounded-lg border border-[#DCFCE7] font-semibold">
-                <Check className="w-4 h-4" />
-                <span>Text Readability & OCR Confidence Verification</span>
+
+              <div>
+                <span className="font-semibold text-[#64748B] block mb-1">Official Statutory Citation</span>
+                <p className="font-medium text-[#1E293B] bg-[#F8FAFC] p-2.5 rounded-lg border border-[#E2E8F0]">
+                  {rule.statutory_citation}
+                </p>
               </div>
-              <div className="flex items-center gap-2.5 p-2 bg-[#F0FDF4] text-[#15803D] rounded-lg border border-[#DCFCE7] font-semibold">
-                <Check className="w-4 h-4" />
-                <span>Metric Units Format & Capitalization Standard</span>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="font-semibold text-[#64748B] block mb-1">Notification Reference</span>
+                  <p className="font-mono font-bold text-[#174A7E] bg-[#F8FAFC] p-2 rounded-lg border border-[#E2E8F0]">
+                    {rule.notification_reference || 'N/A (Original Act/Rules)'}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-semibold text-[#64748B] block mb-1">Notification Date</span>
+                  <p className="font-medium text-[#1E293B] bg-[#F8FAFC] p-2 rounded-lg border border-[#E2E8F0]">
+                    {rule.notification_date || 'N/A'}
+                  </p>
+                </div>
               </div>
-              <div className="flex items-center gap-2.5 p-2 bg-[#F0FDF4] text-[#15803D] rounded-lg border border-[#DCFCE7] font-semibold">
-                <Check className="w-4 h-4" />
-                <span>Principal Display Panel Placement & Font Height Ratio</span>
+
+              <div>
+                <span className="font-semibold text-[#64748B] block mb-1">Amendment Title</span>
+                <p className="font-medium text-[#1E293B] bg-[#F8FAFC] p-2.5 rounded-lg border border-[#E2E8F0]">
+                  {rule.amendment_title || 'Legal Metrology (Packaged Commodities) Rules, 2011'}
+                </p>
+              </div>
+
+              <div>
+                <span className="font-semibold text-[#64748B] block mb-1">Official Source</span>
+                <p className="font-medium text-[#1E293B] bg-[#F8FAFC] p-2.5 rounded-lg border border-[#E2E8F0]">
+                  {rule.official_source || 'The Gazette of India: Extraordinary'}
+                </p>
               </div>
             </div>
           </div>
 
-          {/* Applicable Categories */}
-          <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-6 space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
-              <FolderTree className="w-4 h-4 text-[#174A7E]" />
-              <span>Applicable Commodity Categories</span>
+          <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-5 space-y-4">
+            <h3 className="text-xs font-bold text-[#1E293B] uppercase tracking-wider flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
+              <CheckCircle2 className="w-4 h-4 text-[#0F766E]" />
+              <span>Rule Engine Validation Logic & Enforcement</span>
             </h3>
-            <div className="flex flex-wrap gap-2 pt-1">
-              {categories.slice(0, 5).map((c) => (
-                <span
-                  key={c.id}
-                  className="px-3 py-1.5 bg-[#EBF3FA] text-[#174A7E] font-semibold rounded-lg border border-[#CBD5E1] text-xs"
-                >
-                  {c.name}
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="font-semibold text-[#64748B] block mb-1">Validation Logic Code</span>
+                <span className="font-mono text-xs font-bold text-[#0F766E] bg-[#F0FDFA] border border-[#CCFBF1] px-2.5 py-1 rounded-md inline-block">
+                  {rule.validation_logic_type}
                 </span>
-              ))}
-            </div>
-          </div>
-
-          {/* Statutory Reference Card */}
-          <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-6 space-y-3">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
-              <Scale className="w-4 h-4 text-[#174A7E]" />
-              <span>Official Statutory Source</span>
-            </h3>
-            <div className="space-y-2 text-xs">
-              <div>
-                <label className="text-[10px] font-bold text-[#64748B] uppercase">Statutory Citation</label>
-                <p className="font-bold text-[#1E293B] mt-0.5">{rule.statutory_citation}</p>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="font-semibold text-[#64748B] block mb-1">Effective From</span>
+                  <p className="font-mono font-bold text-[#1E293B] bg-[#F8FAFC] p-2 rounded-lg border border-[#E2E8F0]">
+                    {rule.effective_from || 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <span className="font-semibold text-[#64748B] block mb-1">Effective To</span>
+                  <p className="font-mono font-bold text-[#1E293B] bg-[#F8FAFC] p-2 rounded-lg border border-[#E2E8F0]">
+                    {rule.effective_to || 'Indefinite (Current Version)'}
+                  </p>
+                </div>
+              </div>
+
               <div>
-                <label className="text-[10px] font-bold text-[#64748B] uppercase">Source Document</label>
-                <p className="text-[#475569] mt-0.5">{rule.source_document || 'Legal Metrology (Packaged Commodities) Rules, 2011'}</p>
+                <span className="font-semibold text-[#64748B] block mb-1">Primary Source Document</span>
+                <p className="font-medium text-[#1E293B] bg-[#F8FAFC] p-2.5 rounded-lg border border-[#E2E8F0]">
+                  {rule.source_document}
+                </p>
+              </div>
+
+              <div>
+                <span className="font-semibold text-[#64748B] block mb-1">Applicability Criteria Filter (JSON)</span>
+                <pre className="font-mono text-[11px] text-[#475569] bg-[#F8FAFC] p-3 rounded-lg border border-[#E2E8F0] max-h-48 overflow-y-auto whitespace-pre-wrap">
+                  {JSON.stringify((rule as any).applicability_criteria || {}, null, 2)}
+                </pre>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* TAB 2: APPLICABLE CATEGORIES */}
+      {/* Tab 2: Requirements */}
+      {activeTab === 'requirements' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-[#1E293B]">
+                Statutory Inspection Requirements
+              </h3>
+              <p className="text-xs text-[#64748B]">
+                Individual declaration and physical check parameters evaluated for this rule version
+              </p>
+            </div>
+            {onAddRequirement && (
+              <button
+                onClick={() => onAddRequirement(rule)}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-[#174A7E] hover:bg-[#123860] rounded-lg transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Requirement</span>
+              </button>
+            )}
+          </div>
+
+          <div className="bg-white border border-[#D8DDE3] rounded-xl overflow-hidden shadow-xs">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#64748B] font-bold">
+                  <th className="p-3.5">Requirement Title</th>
+                  <th className="p-3.5">Code</th>
+                  <th className="p-3.5">Type</th>
+                  <th className="p-3.5">Mandatory</th>
+                  <th className="p-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F1F5F9]">
+                {requirements.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-xs text-[#94A3B8]">
+                      No individual requirements configured. Click &quot;Add Requirement&quot; to configure parameters.
+                    </td>
+                  </tr>
+                ) : (
+                  requirements.map((req) => (
+                    <tr key={req.id} className="hover:bg-[#F8FAFC] transition-colors">
+                      <td className="p-3.5 font-semibold text-[#1E293B]">
+                        <div>{req.title}</div>
+                        {req.description && (
+                          <div className="text-[11px] text-[#64748B] font-normal mt-0.5">{req.description}</div>
+                        )}
+                      </td>
+                      <td className="p-3.5 font-mono text-[11px] font-bold text-[#174A7E]">
+                        {req.requirement_code}
+                      </td>
+                      <td className="p-3.5">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EFF6FF] text-[#174A7E] border border-[#BFDBFE]">
+                          {req.requirement_type}
+                        </span>
+                      </td>
+                      <td className="p-3.5">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          req.is_mandatory ? 'bg-[#DCFCE7] text-[#15803D]' : 'bg-[#F1F5F9] text-[#64748B]'
+                        }`}>
+                          {req.is_mandatory ? 'Mandatory' : 'Optional / Guideline'}
+                        </span>
+                      </td>
+                      <td className="p-3.5 text-right">
+                        {onDeleteRequirement && (
+                          <button
+                            onClick={() => onDeleteRequirement(rule.id, req.id)}
+                            className="p-1.5 text-[#DC2626] hover:bg-[#FEF2F2] rounded-md transition-colors cursor-pointer"
+                            title="Remove Requirement"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 3: Categories */}
       {activeTab === 'categories' && (
-        <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-6 space-y-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
-            <FolderTree className="w-4 h-4 text-[#174A7E]" />
-            <span>Category Mapping Matrix</span>
-          </h3>
-          <p className="text-xs text-[#64748B]">
-            This statutory requirement is enforced on packages categorized under the following commodity classifications:
-          </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pt-2">
-            {categories.map((c) => (
-              <div key={c.id} className="p-3.5 bg-[#F8F9FA] border border-[#D8DDE3] rounded-xl flex items-center justify-between text-xs shadow-2xs">
+        <div className="bg-white border border-[#D8DDE3] rounded-xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold text-[#1E293B] uppercase tracking-wider flex items-center gap-2">
+              <FolderTree className="w-4 h-4 text-[#174A7E]" />
+              <span>Applicable Commodity Groups</span>
+            </h3>
+            <span className="text-xs text-[#64748B]">
+              Configure applicability under Category Management
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {categories.map((cat) => (
+              <div
+                key={cat.id}
+                className="p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC] flex items-center justify-between"
+              >
                 <div>
-                  <div className="font-bold text-[#1E293B]">{c.name}</div>
-                  <div className="text-[10px] font-mono text-[#64748B]">{c.category_code}</div>
+                  <div className="font-semibold text-xs text-[#1E293B]">{cat.name}</div>
+                  <div className="font-mono text-[10px] text-[#64748B]">{cat.category_code}</div>
                 </div>
-                <span className="px-2 py-0.5 bg-[#DCFCE7] text-[#15803D] font-bold text-[10px] rounded border border-[#86EFAC]">
-                  APPLICABLE
-                </span>
+                <Check className="w-4 h-4 text-[#15803D]" />
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {/* TAB 3: VERSION HISTORY */}
+      {/* Tab 4: Version History */}
       {activeTab === 'versions' && (
-        <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs p-6 space-y-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-2 border-b border-[#E2E8F0] pb-3">
-            <History className="w-4 h-4 text-[#174A7E]" />
-            <span>Statutory Version Progression Timeline ({versionHistory.length})</span>
-          </h3>
-
-          <div className="space-y-3">
-            {versionHistory.map((v) => (
-              <div
-                key={v.id}
-                className={`p-4 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs ${
-                  v.id === rule.id
-                    ? 'bg-[#EBF3FA]/50 border-[#174A7E] shadow-xs ring-1 ring-[#174A7E]'
-                    : 'bg-[#F8F9FA] border-[#D8DDE3]'
-                }`}
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-[#174A7E] bg-white px-2 py-0.5 rounded border border-[#CBD5E1]">
-                      {v.version}
-                    </span>
-                    <span className="font-bold text-[#1E293B]">{v.title}</span>
-                    <span className={`px-2 py-0.2 rounded-full text-[10px] font-bold border ${
-                      v.is_active ? 'bg-[#DCFCE7] text-[#15803D] border-[#86EFAC]' : 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
+        <div className="bg-white border border-[#D8DDE3] rounded-xl overflow-hidden shadow-xs">
+          <table className="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#64748B] font-bold">
+                <th className="p-3.5">Version Code</th>
+                <th className="p-3.5">Title</th>
+                <th className="p-3.5">Effective Period</th>
+                <th className="p-3.5">Status</th>
+                <th className="p-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#F1F5F9]">
+              {versionHistory.map((v) => (
+                <tr key={v.id} className="hover:bg-[#F8FAFC] transition-colors">
+                  <td className="p-3.5 font-mono font-bold text-[#174A7E]">
+                    {v.version}
+                    {v.id === rule.id && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#EFF6FF] text-[#174A7E]">
+                        Viewing
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-3.5 font-medium text-[#1E293B]">{v.title}</td>
+                  <td className="p-3.5 text-[#64748B]">
+                    {v.effective_from} {v.effective_to ? `to ${v.effective_to}` : '(Current)'}
+                  </td>
+                  <td className="p-3.5">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      v.is_active ? 'bg-[#DCFCE7] text-[#15803D]' : 'bg-[#FEF3C7] text-[#92400E]'
                     }`}>
                       {v.is_active ? 'Active' : 'Superseded'}
                     </span>
-                  </div>
-                  <p className="text-[11px] text-[#64748B] line-clamp-1">{v.description}</p>
-                </div>
-
-                <div className="text-[11px] text-[#64748B] sm:text-right">
-                  <div>Effective: <strong>{v.effective_from ? new Date(v.effective_from).toLocaleDateString() : '01 Jul 2011'}</strong></div>
-                  <div className="text-[10px] text-[#94A3B8]">Database ID: #{v.id}</div>
-                </div>
-              </div>
-            ))}
-          </div>
+                  </td>
+                  <td className="p-3.5 text-right">
+                    {onOpenImpactSimulator && (
+                      <button
+                        onClick={() => onOpenImpactSimulator(v)}
+                        className="px-2.5 py-1 text-[11px] font-bold text-[#15803D] bg-[#F0FDF4] hover:bg-[#DCFCE7] border border-[#BBF7D0] rounded-md transition-colors cursor-pointer"
+                      >
+                        Simulate Impact
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

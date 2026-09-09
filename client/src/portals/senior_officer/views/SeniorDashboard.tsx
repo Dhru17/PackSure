@@ -1,79 +1,172 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Clock, 
   AlertTriangle, 
   RotateCcw, 
   CheckCircle, 
   ArrowRight, 
-  Gavel
+  Gavel,
+  Calendar,
+  Sparkles,
+  Activity,
+  Plus
 } from 'lucide-react';
 import { KpiCard, EmptyState } from '../../../components/ui';
+import { ScheduleAuditModal } from '../components/ScheduleAuditModal';
 
 interface SeniorDashboardProps {
   overviewData: any;
   onOpenCase: (caseId: number) => void;
   onViewAllReviews: () => void;
   onViewHistory: () => void;
+  onViewUpcoming?: () => void;
+  onViewIntelligence?: () => void;
+  onRefreshData?: () => void;
 }
 
 export const SeniorDashboard: React.FC<SeniorDashboardProps> = ({
   overviewData,
   onOpenCase,
   onViewAllReviews,
-  onViewHistory
+  onViewHistory,
+  onViewUpcoming,
+  onViewIntelligence,
+  onRefreshData
 }) => {
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+
   const workload = overviewData?.workload || {
     pending_adjudications: 0,
     high_priority_cases: 0,
     returned_cases: 0,
-    today_finalized: 0
+    scheduled_audits: 0,
+    active_in_field: 0,
+    today_finalized: 0,
+    systemic_patterns: 0
   };
 
   const recentSubmissions = overviewData?.recent_submissions || [];
   const recentDecisions = overviewData?.recent_decisions || [];
+  const recentPatterns = overviewData?.recent_patterns || [];
 
   return (
     <div className="space-y-6">
-      {/* 4 Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Top Action Bar */}
+      <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-6 rounded-2xl text-white shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider mb-1">
+            <span>Executive Legal Metrology Supervisory Console</span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-white">
+            Senior Officer Workstation
+          </h1>
+          <p className="text-xs text-slate-300 mt-0.5">
+            Audit planning, inspector eligibility assignment, evidence adjudication, and brand compliance intelligence.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsScheduleModalOpen(true)}
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            Schedule Inspection Audit
+          </button>
+        </div>
+      </div>
+
+      {/* 6 Summary KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
         <KpiCard
           label="Pending Review"
           value={workload.pending_adjudications}
-          subtext="Awaiting senior determination"
-          icon={<Clock className="w-5 h-5 text-[#B45309]" />}
+          subtext="Awaiting determination"
+          icon={<Clock className="w-4 h-4 text-[#B45309]" />}
           variant="warning"
           onClick={onViewAllReviews}
         />
         <KpiCard
-          label="High Priority / Violations"
+          label="Rule Violations"
           value={workload.high_priority_cases}
-          subtext="Flagged rule breaches"
-          icon={<AlertTriangle className="w-5 h-5 text-[#DC2626]" />}
+          subtext="Flagged statutory breaches"
+          icon={<AlertTriangle className="w-4 h-4 text-[#DC2626]" />}
           variant="danger"
           onClick={onViewAllReviews}
         />
         <KpiCard
-          label="Returned to Inspector"
+          label="Returned for Fix"
           value={workload.returned_cases}
           subtext="Remanded for re-inspection"
-          icon={<RotateCcw className="w-5 h-5 text-[#C2410C]" />}
+          icon={<RotateCcw className="w-4 h-4 text-[#C2410C]" />}
           variant="warning"
           onClick={onViewAllReviews}
         />
         <KpiCard
-          label="Finalized Determinations"
+          label="Upcoming Audits"
+          value={workload.scheduled_audits}
+          subtext="Scheduled plant audits"
+          icon={<Calendar className="w-4 h-4 text-indigo-600" />}
+          variant="default"
+          onClick={onViewUpcoming}
+        />
+        <KpiCard
+          label="In-Field Active"
+          value={workload.active_in_field}
+          subtext="Inspections under way"
+          icon={<Activity className="w-4 h-4 text-emerald-600" />}
+          variant="default"
+          onClick={onViewUpcoming}
+        />
+        <KpiCard
+          label="Finalized Today"
           value={workload.today_finalized}
-          subtext="Completed supervisory reviews"
-          icon={<CheckCircle className="w-5 h-5 text-[#16A34A]" />}
+          subtext="Adjudications concluded"
+          icon={<CheckCircle className="w-4 h-4 text-[#16A34A]" />}
           variant="success"
           onClick={onViewHistory}
         />
       </div>
 
+      {/* Innovation #5 Systemic Intelligence Alert Banner (if patterns detected) */}
+      {recentPatterns.length > 0 && (
+        <div className="bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-transparent border border-amber-300/60 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-amber-500 text-white rounded-xl shadow-sm mt-0.5">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-amber-900 uppercase tracking-wider">
+                  Innovation #5 Intelligence Alert
+                </span>
+                <span className="bg-amber-100 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                  {workload.systemic_patterns || recentPatterns.length} Active Systemic Patterns
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-slate-900 mt-0.5">
+                {recentPatterns[0]?.title || 'Recurring Multi-Product Packaging Non-Compliance Detected'}
+              </h3>
+              <p className="text-xs text-slate-600 mt-0.5 line-clamp-1">
+                {recentPatterns[0]?.description}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={onViewIntelligence}
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5 self-start md:self-center whitespace-nowrap cursor-pointer shadow-sm"
+          >
+            <span>Explore Systemic Patterns</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Main Content Grid: Action Required & Recent Decisions */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: Action Required (Pending Reviews) */}
-        <div className="lg:col-span-7 bg-white border border-[#D8DDE3] rounded-xl p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="lg:col-span-7 bg-white border border-[#D8DDE3] rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-[#EBF3FA] text-[#174A7E] rounded-lg">
@@ -144,7 +237,7 @@ export const SeniorDashboard: React.FC<SeniorDashboardProps> = ({
         </div>
 
         {/* Right: Recent Supervisory Decisions Log */}
-        <div className="lg:col-span-5 bg-white border border-[#D8DDE3] rounded-xl p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="lg:col-span-5 bg-white border border-[#D8DDE3] rounded-2xl p-5 sm:p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
             <div className="flex items-center gap-2">
               <div className="p-1.5 bg-[#EBF3FA] text-[#174A7E] rounded-lg">
@@ -200,6 +293,15 @@ export const SeniorDashboard: React.FC<SeniorDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Schedule Audit Modal */}
+      <ScheduleAuditModal
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        onSuccess={() => {
+          if (onRefreshData) onRefreshData();
+        }}
+      />
     </div>
   );
 };

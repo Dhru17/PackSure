@@ -195,7 +195,29 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              {/* OpenCV Quality Metrics Strip */}
+              <div className="grid grid-cols-3 gap-2 bg-[#F8FAFC] p-3 rounded-lg border border-[#E2E8F0] text-[11px]">
+                <div>
+                  <span className="text-[#64748B] block">Focus / Sharpness:</span>
+                  <span className="font-bold text-[#1E293B]">
+                    {currentEvidence.blur_score ? `${Math.round(currentEvidence.blur_score)} (Laplacian)` : 'Adequate'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#64748B] block">Brightness:</span>
+                  <span className="font-bold text-[#1E293B]">
+                    {currentEvidence.brightness_score ? `${Math.round(currentEvidence.brightness_score)} / 255` : 'Balanced'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#64748B] block">Readability:</span>
+                  <span className={`font-bold ${currentEvidence.quality_verdict === 'READABLE' ? 'text-[#15803D]' : currentEvidence.quality_verdict === 'BORDERLINE' ? 'text-[#D97706]' : 'text-[#DC2626]'}`}>
+                    {currentEvidence.quality_verdict || 'READABLE'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 pt-1">
                 <button
                   type="button"
                   onClick={() => setPreviewEvidence(currentEvidence)}
@@ -223,7 +245,7 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
                 No image captured for {selectedSurface} panel
               </div>
               <div className="text-[11px] text-[#64748B] mt-0.5 max-w-sm mx-auto">
-                Ensure packaging text is well-lit, non-reflective, and in sharp focus.
+                Ensure packaging text is well-lit, non-reflective, and in sharp focus for RapidOCR extraction.
               </div>
             </div>
 
@@ -244,11 +266,26 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
             {isUploading && (
               <div className="text-xs text-[#174A7E] font-bold flex items-center justify-center gap-2 animate-pulse pt-2">
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Processing & verifying image clarity...</span>
+                <span>Running OpenCV blur & clarity diagnostics...</span>
               </div>
             )}
           </div>
         )}
+
+        {/* Legal Metrology Statutory Requirements Alert */}
+        <div className="p-4 bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl text-xs flex items-start gap-3">
+          <div className="p-1.5 bg-[#DBEAFE] text-[#1E40AF] rounded-lg mt-0.5">
+            <CheckCircle2 className="w-4 h-4" />
+          </div>
+          <div className="space-y-1">
+            <div className="font-bold text-[#1E3A8A]">
+              Mandatory Evidence Surfaces (Rule 6, Legal Metrology Packaged Commodities Rules)
+            </div>
+            <div className="text-[#1E40AF] text-[11px]">
+              Both <strong>Front Panel (PDP)</strong> and <strong>Back Panel (BIP)</strong> must be uploaded to extract mandatory statutory declarations (Net Qty, MRP, Mfg Date, Name/Address, Customer Care).
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Evidence Completion Summary Banner */}

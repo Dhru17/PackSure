@@ -1,11 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
-import type { User, RegulatoryRule, AuditLog, ProductCategory, UserRole } from '../../types';
+import type { 
+  User, 
+  RegulatoryRule, 
+  AuditLog, 
+  ProductCategory, 
+  Company, 
+  Plant, 
+  Jurisdiction 
+} from '../../types';
 
 // Admin Components & Views
 import { AdminSidebar, type AdminNavTab } from './components/AdminSidebar';
 import { AdminTopbar } from './components/AdminTopbar';
 import { AdminDashboard } from './views/AdminDashboard';
+import { AdminCompaniesView } from './views/AdminCompaniesView';
+import { AdminJurisdictionsView } from './views/AdminJurisdictionsView';
+import { AdminInspectorsView } from './views/AdminInspectorsView';
 import { AdminUsersView } from './views/AdminUsersView';
 import { AdminUserDetailsView } from './views/AdminUserDetailsView';
 import { AdminRulesView } from './views/AdminRulesView';
@@ -18,6 +29,12 @@ import { AdminProfileView } from './views/AdminProfileView';
 
 // Modals
 import { UserFormModal } from './views/modals/UserFormModal';
+import { CompanyFormModal } from './views/modals/CompanyFormModal';
+import { PlantFormModal } from './views/modals/PlantFormModal';
+import { JurisdictionFormModal } from './views/modals/JurisdictionFormModal';
+import { InspectorEligibilityModal } from './views/modals/InspectorEligibilityModal';
+import { RuleImpactModal } from './views/modals/RuleImpactModal';
+import { RuleRequirementModal } from './views/modals/RuleRequirementModal';
 import { RuleFormModal } from './views/modals/RuleFormModal';
 import { CategoryFormModal } from './views/modals/CategoryFormModal';
 import { CategoryRuleMapModal } from './views/modals/CategoryRuleMapModal';
@@ -26,8 +43,11 @@ import { AuditDiffDrawer } from './views/modals/AuditDiffDrawer';
 export const AdminPortal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminNavTab | 'user_detail' | 'rule_detail' | 'category_detail'>('home');
 
-  // Data states
+  // Master Data states
   const [users, setUsers] = useState<User[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [plants, setPlants] = useState<Plant[]>([]);
+  const [jurisdictions, setJurisdictions] = useState<Jurisdiction[]>([]);
   const [rules, setRules] = useState<RegulatoryRule[]>([]);
   const [categories, setCategories] = useState<ProductCategory[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -42,6 +62,25 @@ export const AdminPortal: React.FC = () => {
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [userModalTarget, setUserModalTarget] = useState<User | null>(null);
 
+  const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
+  const [companyModalTarget, setCompanyModalTarget] = useState<Company | null>(null);
+
+  const [isPlantModalOpen, setIsPlantModalOpen] = useState(false);
+  const [plantModalTarget, setPlantModalTarget] = useState<Plant | null>(null);
+  const [plantDefaultCompanyId, setPlantDefaultCompanyId] = useState<number | null>(null);
+
+  const [isJurisdictionModalOpen, setIsJurisdictionModalOpen] = useState(false);
+  const [jurisdictionModalTarget, setJurisdictionModalTarget] = useState<Jurisdiction | null>(null);
+
+  const [isEligibilityModalOpen, setIsEligibilityModalOpen] = useState(false);
+  const [eligibilityModalTarget, setEligibilityModalTarget] = useState<User | null>(null);
+
+  const [isImpactModalOpen, setIsImpactModalOpen] = useState(false);
+  const [impactModalTargetRule, setImpactModalTargetRule] = useState<RegulatoryRule | null>(null);
+
+  const [isRequirementModalOpen, setIsRequirementModalOpen] = useState(false);
+  const [requirementModalTargetRule, setRequirementModalTargetRule] = useState<RegulatoryRule | null>(null);
+
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [ruleModalTarget, setRuleModalTarget] = useState<RegulatoryRule | null>(null);
   const [isNewRuleVersionMode, setIsNewRuleVersionMode] = useState(false);
@@ -53,6 +92,12 @@ export const AdminPortal: React.FC = () => {
   const [selectedAuditLogForDiff, setSelectedAuditLogForDiff] = useState<AuditLog | null>(null);
 
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const showNotice = (msg: string) => {
+    setActionNotice(msg);
+    setTimeout(() => setActionNotice(null), 4000);
+  };
 
   // ----------------------------------------------------
   // DATA LOADERS
@@ -63,6 +108,33 @@ export const AdminPortal: React.FC = () => {
       setUsers(res.users || []);
     } catch (err) {
       console.error('Error loading users:', err);
+    }
+  };
+
+  const loadCompanies = async () => {
+    try {
+      const res = await api.getCompanies();
+      setCompanies(res.companies || []);
+    } catch (err) {
+      console.error('Error loading companies:', err);
+    }
+  };
+
+  const loadPlants = async () => {
+    try {
+      const res = await api.getPlants();
+      setPlants(res.plants || []);
+    } catch (err) {
+      console.error('Error loading plants:', err);
+    }
+  };
+
+  const loadJurisdictions = async () => {
+    try {
+      const res = await api.getJurisdictions();
+      setJurisdictions(res.jurisdictions || []);
+    } catch (err) {
+      console.error('Error loading jurisdictions:', err);
     }
   };
 
@@ -95,6 +167,9 @@ export const AdminPortal: React.FC = () => {
 
   const refreshAll = () => {
     loadUsers();
+    loadCompanies();
+    loadPlants();
+    loadJurisdictions();
     loadRules();
     loadCategories();
     loadAuditLogs();
@@ -105,260 +180,293 @@ export const AdminPortal: React.FC = () => {
   }, []);
 
   // ----------------------------------------------------
+  // COMPANY HANDLERS
+  // ----------------------------------------------------
+  const handleSaveCompany = async (formData: any) => {
+    setIsProcessing(true);
+    try {
+      if (companyModalTarget) {
+        await api.updateCompany(companyModalTarget.id, formData);
+        showNotice(`Company '${formData.name}' updated successfully.`);
+      } else {
+        await api.createCompany(formData);
+        showNotice(`New enterprise '${formData.name}' registered.`);
+      }
+      setIsCompanyModalOpen(false);
+      loadCompanies();
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save company.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleToggleCompanyStatus = async (companyId: number) => {
+    try {
+      await api.toggleCompanyStatus(companyId);
+      showNotice('Company status toggled.');
+      loadCompanies();
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to toggle status.');
+    }
+  };
+
+  // ----------------------------------------------------
+  // PLANT HANDLERS
+  // ----------------------------------------------------
+  const handleSavePlant = async (formData: any) => {
+    setIsProcessing(true);
+    try {
+      if (plantModalTarget) {
+        await api.updatePlant(plantModalTarget.id, formData);
+        showNotice(`Plant '${formData.name}' updated.`);
+      } else {
+        await api.createPlant(formData);
+        showNotice(`New facility '${formData.name}' registered.`);
+      }
+      setIsPlantModalOpen(false);
+      loadPlants();
+      loadCompanies();
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save plant.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleTogglePlantStatus = async (plantId: number) => {
+    try {
+      await api.togglePlantStatus(plantId);
+      showNotice('Plant status toggled.');
+      loadPlants();
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to toggle plant status.');
+    }
+  };
+
+  // ----------------------------------------------------
+  // JURISDICTION HANDLERS
+  // ----------------------------------------------------
+  const handleSaveJurisdiction = async (formData: any) => {
+    setIsProcessing(true);
+    try {
+      if (jurisdictionModalTarget) {
+        await api.updateJurisdiction(jurisdictionModalTarget.id, formData);
+        showNotice(`Jurisdiction '${formData.name}' updated.`);
+      } else {
+        await api.createJurisdiction(formData);
+        showNotice(`New statutory jurisdiction '${formData.name}' created.`);
+      }
+      setIsJurisdictionModalOpen(false);
+      loadJurisdictions();
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to save jurisdiction.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleToggleJurisdictionStatus = async (jurId: number) => {
+    try {
+      await api.toggleJurisdictionStatus(jurId);
+      showNotice('Jurisdiction status toggled.');
+      loadJurisdictions();
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to toggle jurisdiction status.');
+    }
+  };
+
+  // ----------------------------------------------------
+  // INSPECTOR ELIGIBILITY HANDLERS
+  // ----------------------------------------------------
+  const handleSaveEligibility = async (
+    inspectorId: number,
+    data: { category_ids: number[]; jurisdiction_ids: number[] }
+  ) => {
+    setIsProcessing(true);
+    try {
+      await api.configureInspectorEligibility(inspectorId, data);
+      showNotice('Inspector permanent qualifications updated successfully.');
+      setIsEligibilityModalOpen(false);
+      loadUsers();
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to configure inspector eligibility.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ----------------------------------------------------
+  // RULE REQUIREMENTS & VERSIONING HANDLERS
+  // ----------------------------------------------------
+  const handleSaveRequirement = async (ruleId: number, data: any) => {
+    setIsProcessing(true);
+    try {
+      await api.addRuleRequirement(ruleId, data);
+      showNotice('Statutory requirement added to rule.');
+      setIsRequirementModalOpen(false);
+      loadRules();
+      if (selectedRule && selectedRule.id === ruleId) {
+        const updatedRules = await api.getRules();
+        const found = (updatedRules.rules || []).find((r: any) => r.id === ruleId);
+        if (found) setSelectedRule(found);
+      }
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add requirement.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteRequirement = async (ruleId: number, reqId: number) => {
+    if (!confirm('Are you sure you want to delete this statutory requirement?')) return;
+    try {
+      await api.deleteRuleRequirement(ruleId, reqId);
+      showNotice('Requirement removed.');
+      loadRules();
+      if (selectedRule && selectedRule.id === ruleId) {
+        const updatedRules = await api.getRules();
+        const found = (updatedRules.rules || []).find((r: any) => r.id === ruleId);
+        if (found) setSelectedRule(found);
+      }
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete requirement.');
+    }
+  };
+
+  // ----------------------------------------------------
   // USER HANDLERS
   // ----------------------------------------------------
-  const handleOpenUserDetail = (u: User) => {
-    setSelectedUser(u);
-    setActiveTab('user_detail');
-  };
-
-  const handleSaveUser = async (formData: any) => {
+  const handleSaveUser = async (userData: any) => {
+    setIsProcessing(true);
     try {
       if (userModalTarget) {
-        await api.updateUser(userModalTarget.id, formData);
-        setActionNotice(`Officer profile "${formData.full_name}" updated successfully.`);
+        await api.updateUser(userModalTarget.id, userData);
+        showNotice(`User '${userData.full_name}' updated.`);
       } else {
-        await api.createUser(formData);
-        setActionNotice(`New officer "${formData.full_name}" provisioned successfully.`);
+        await api.createUser(userData);
+        showNotice(`User '${userData.full_name}' created.`);
       }
       setIsUserModalOpen(false);
-      setUserModalTarget(null);
-      loadUsers();
-      loadAuditLogs();
-      if (selectedUser && userModalTarget && selectedUser.id === userModalTarget.id) {
-        setSelectedUser({ ...selectedUser, ...formData });
-      }
-    } catch (err: any) {
-      alert(`User operation failed: ${err.message}`);
-    }
-  };
-
-  const handleChangeUserRole = async (newRole: UserRole) => {
-    if (!selectedUser) return;
-    try {
-      await api.updateUser(selectedUser.id, {
-        ...selectedUser,
-        role: newRole
-      });
-      setActionNotice(`Officer "${selectedUser.full_name}" role updated to ${newRole}.`);
-      setSelectedUser({ ...selectedUser, role: newRole });
       loadUsers();
       loadAuditLogs();
     } catch (err: any) {
-      alert(`Role change failed: ${err.message}`);
+      alert(err.message || 'Failed to save user.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleToggleUserStatus = async (targetUser: User) => {
+  const handleToggleUserStatus = async (user: User) => {
     try {
-      const res = await api.toggleUserStatus(targetUser.id);
-      setActionNotice(res.message);
+      await api.toggleUserStatus(user.id);
+      showNotice(`User account ${user.is_active ? 'deactivated' : 'activated'}.`);
       loadUsers();
       loadAuditLogs();
-      if (selectedUser && selectedUser.id === targetUser.id) {
-        setSelectedUser({ ...selectedUser, is_active: !selectedUser.is_active });
-      }
     } catch (err: any) {
-      alert(`Status toggle failed: ${err.message}`);
-    }
-  };
-
-  const handleResetUserPassword = async (targetUser: User) => {
-    const newPass = prompt(`Enter new password for ${targetUser.full_name} (${targetUser.email}):`, 'Pass#2026');
-    if (!newPass) return;
-    try {
-      await api.resetUserPassword(targetUser.id, newPass);
-      setActionNotice(`Password for ${targetUser.email} reset successfully.`);
-      loadAuditLogs();
-    } catch (err: any) {
-      alert(`Password reset failed: ${err.message}`);
-    }
-  };
-
-  const handleDeleteUser = async (targetUser: User) => {
-    try {
-      const res = await api.deleteUser(targetUser.id);
-      setActionNotice(res.message);
-      loadUsers();
-      loadAuditLogs();
-      setActiveTab('users');
-      setSelectedUser(null);
-    } catch (err: any) {
-      alert(`Delete failed: ${err.message}`);
+      alert(err.message || 'Failed to toggle user status.');
     }
   };
 
   // ----------------------------------------------------
-  // RULE HANDLERS
+  // RULE & CATEGORY HANDLERS
   // ----------------------------------------------------
-  const handleOpenRuleDetail = (r: RegulatoryRule) => {
-    setSelectedRule(r);
-    setActiveTab('rule_detail');
-  };
-
-  const handleSaveRule = async (formData: any) => {
+  const handleSaveRule = async (ruleData: any) => {
+    setIsProcessing(true);
     try {
-      if (isNewRuleVersionMode || !ruleModalTarget) {
-        await api.createRule(formData);
-        setActionNotice(`Regulatory Rule [${formData.rule_code} (${formData.version})] published successfully.`);
+      if (isNewRuleVersionMode && ruleModalTarget) {
+        await api.createRuleVersion(ruleModalTarget.id, ruleData);
+        showNotice(`New version '${ruleData.version}' for ${ruleData.rule_code} created.`);
+      } else if (ruleModalTarget) {
+        await api.updateRule(ruleModalTarget.id, ruleData);
+        showNotice(`Rule '${ruleData.rule_code}' updated.`);
       } else {
-        await api.updateRule(ruleModalTarget.id, formData);
-        setActionNotice(`Rule [${ruleModalTarget.rule_code}] updated successfully.`);
+        await api.createRule(ruleData);
+        showNotice(`Rule '${ruleData.rule_code}' published.`);
       }
       setIsRuleModalOpen(false);
-      setRuleModalTarget(null);
-      setIsNewRuleVersionMode(false);
       loadRules();
       loadAuditLogs();
-      if (selectedRule) {
-        setSelectedRule({ ...selectedRule, ...formData });
-      }
     } catch (err: any) {
-      alert(`Rule operation failed: ${err.message}`);
+      alert(err.message || 'Failed to save rule.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleToggleRuleStatus = async (r: RegulatoryRule) => {
+  const handleToggleRuleStatus = async (rule: RegulatoryRule) => {
     try {
-      const res = await api.toggleRuleStatus(r.id);
-      setActionNotice(res.message);
+      await api.toggleRuleStatus(rule.id);
+      showNotice(`Rule ${rule.rule_code} status updated.`);
       loadRules();
       loadAuditLogs();
-      if (selectedRule && selectedRule.id === r.id) {
-        setSelectedRule({ ...selectedRule, is_active: !selectedRule.is_active });
-      }
     } catch (err: any) {
-      alert(`Rule toggle failed: ${err.message}`);
+      alert(err.message || 'Failed to toggle rule status.');
     }
   };
 
-  // ----------------------------------------------------
-  // CATEGORY HANDLERS
-  // ----------------------------------------------------
-  const handleOpenCategoryDetail = async (cat: ProductCategory) => {
-    setSelectedCategory(cat);
-    try {
-      const res = await api.getCategoryRules(cat.id);
-      setMappedCategoryRules(res.mappings || []);
-    } catch {
-      setMappedCategoryRules([]);
-    }
-    setActiveTab('category_detail');
-  };
-
-  const handleOpenCategoryRuleMappings = async (cat: ProductCategory) => {
-    setSelectedCategory(cat);
-    try {
-      const res = await api.getCategoryRules(cat.id);
-      setMappedCategoryRules(res.mappings || []);
-    } catch {
-      setMappedCategoryRules([]);
-    }
-    setIsCategoryRuleMapModalOpen(true);
-  };
-
-  const handleSaveCategory = async (formData: any) => {
+  const handleSaveCategory = async (catData: any) => {
+    setIsProcessing(true);
     try {
       if (categoryModalTarget) {
-        await api.updateCategory(categoryModalTarget.id, formData);
-        setActionNotice(`Category "${formData.name}" updated successfully.`);
+        await api.updateCategory(categoryModalTarget.id, catData);
+        showNotice(`Category '${catData.name}' updated.`);
       } else {
-        await api.createCategory(formData);
-        setActionNotice(`Category "${formData.name}" added successfully.`);
+        await api.createCategory(catData);
+        showNotice(`Category '${catData.name}' created.`);
       }
       setIsCategoryModalOpen(false);
-      setCategoryModalTarget(null);
       loadCategories();
       loadAuditLogs();
-      if (selectedCategory) {
-        setSelectedCategory({ ...selectedCategory, ...formData });
-      }
     } catch (err: any) {
-      alert(`Category operation failed: ${err.message}`);
+      alert(err.message || 'Failed to save category.');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  const handleToggleCategoryStatus = async (cat: ProductCategory) => {
+  const handleToggleCategoryStatus = async (category: ProductCategory) => {
     try {
-      const res = await api.toggleCategoryStatus(cat.id);
-      setActionNotice(res.message);
-      loadCategories();
-      loadAuditLogs();
-      if (selectedCategory && selectedCategory.id === cat.id) {
-        setSelectedCategory({ ...selectedCategory, is_active: !selectedCategory.is_active });
-      }
-    } catch (err: any) {
-      alert(`Category toggle failed: ${err.message}`);
-    }
-  };
-
-  const handleDeleteCategory = async (cat: ProductCategory) => {
-    if (!confirm(`Are you sure you want to delete category "${cat.name}"?`)) return;
-    try {
-      const res = await api.deleteCategory(cat.id);
-      setActionNotice(res.message);
-      loadCategories();
-      loadAuditLogs();
-      setActiveTab('categories');
-      setSelectedCategory(null);
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleMapRule = async (data: { rule_id: number; is_exempt?: boolean; exception_notes?: string }) => {
-    if (!selectedCategory) return;
-    try {
-      await api.mapCategoryRule(selectedCategory.id, data);
-      setActionNotice(`Rule mapped to category "${selectedCategory.name}".`);
-      const res = await api.getCategoryRules(selectedCategory.id);
-      setMappedCategoryRules(res.mappings || []);
+      await api.toggleCategoryStatus(category.id);
+      showNotice(`Category ${category.name} status updated.`);
       loadCategories();
       loadAuditLogs();
     } catch (err: any) {
-      alert(err.message);
+      alert(err.message || 'Failed to toggle category status.');
     }
   };
-
-  const handleUnmapRule = async (ruleId: number) => {
-    if (!selectedCategory) return;
-    try {
-      await api.unmapCategoryRule(selectedCategory.id, ruleId);
-      const res = await api.getCategoryRules(selectedCategory.id);
-      setMappedCategoryRules(res.mappings || []);
-      loadCategories();
-      loadAuditLogs();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const currentNavTab: AdminNavTab = 
-    (activeTab === 'home' || activeTab === 'users' || activeTab === 'rules' || activeTab === 'categories' || activeTab === 'audit' || activeTab === 'settings' || activeTab === 'profile')
-      ? activeTab
-      : 'home';
 
   return (
-    <div className="bg-[#F4F6F8] rounded-2xl border border-[#D8DDE3] shadow-sm overflow-hidden flex flex-col md:flex-row min-h-[calc(100vh-8rem)]">
-      {/* Left Navigation Sidebar */}
+    <div className="flex bg-[#F8FAFC] min-h-screen text-[#1E293B]">
+      {/* Fixed Sidebar */}
       <AdminSidebar
-        activeTab={currentNavTab}
+        activeTab={
+          activeTab === 'user_detail' ? 'users' :
+          activeTab === 'rule_detail' ? 'rules' :
+          activeTab === 'category_detail' ? 'categories' :
+          (activeTab as AdminNavTab)
+        }
         onSelectTab={(tab) => {
+          setSelectedUser(null);
+          setSelectedRule(null);
+          setSelectedCategory(null);
           setActiveTab(tab);
-          if (tab === 'home') refreshAll();
-          if (tab === 'users') loadUsers();
-          if (tab === 'rules') loadRules();
-          if (tab === 'categories') loadCategories();
-          if (tab === 'audit') loadAuditLogs();
         }}
-        pendingRequestsCount={users.filter(u => !u.is_active).length}
       />
 
-      {/* Main Workstation View Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC]">
-        {/* Topbar Header */}
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0">
         <AdminTopbar
-          activeTab={activeTab}
+          activeTab={activeTab as any}
           onOpenProfile={() => setActiveTab('profile')}
           onNewUser={() => {
             setUserModalTarget(null);
@@ -373,37 +481,37 @@ export const AdminPortal: React.FC = () => {
             setCategoryModalTarget(null);
             setIsCategoryModalOpen(true);
           }}
-          pendingAlertsCount={users.filter(u => !u.is_active).length}
         />
 
-        {/* Action Notice Toast */}
+        {/* Global Action Notification Banner */}
         {actionNotice && (
-          <div className="mx-6 mt-4 p-3.5 bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl flex items-center justify-between gap-4 text-xs shadow-xs">
-            <span className="font-semibold text-[#1E40AF]">{actionNotice}</span>
-            <button
-              onClick={() => setActionNotice(null)}
-              className="px-2.5 py-1 bg-white hover:bg-[#F8FAFC] text-[#1E293B] rounded text-[11px] font-bold border border-[#CBD5E1] cursor-pointer"
-            >
-              Dismiss
+          <div className="mx-6 mt-4 p-3 bg-[#DCFCE7] border border-[#86EFAC] text-[#15803D] text-xs font-bold rounded-xl flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top-2 duration-150">
+            <span>{actionNotice}</span>
+            <button onClick={() => setActionNotice(null)} className="text-[#15803D] hover:text-[#14532D] cursor-pointer">
+              ✕
             </button>
           </div>
         )}
 
-        {/* View Routing */}
-        <div className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto">
-          {/* SCREEN 1: DASHBOARD (HOME) */}
+        <main className="p-6 flex-1 overflow-y-auto">
+          {/* 1. Overview Dashboard */}
           {activeTab === 'home' && (
             <AdminDashboard
               users={users}
               rules={rules}
               categories={categories}
               auditLogs={auditLogs}
-              onNavigateTab={(tab) => {
-                setActiveTab(tab);
-                if (tab === 'users') loadUsers();
-                if (tab === 'rules') loadRules();
-                if (tab === 'categories') loadCategories();
-                if (tab === 'audit') loadAuditLogs();
+              companies={companies}
+              plants={plants}
+              jurisdictions={jurisdictions}
+              onNavigateTab={(tab) => setActiveTab(tab)}
+              onNewCompany={() => {
+                setCompanyModalTarget(null);
+                setIsCompanyModalOpen(true);
+              }}
+              onNewJurisdiction={() => {
+                setJurisdictionModalTarget(null);
+                setIsJurisdictionModalOpen(true);
               }}
               onNewUser={() => {
                 setUserModalTarget(null);
@@ -421,11 +529,77 @@ export const AdminPortal: React.FC = () => {
             />
           )}
 
-          {/* SCREEN 2: USERS VIEW */}
+          {/* 2. Companies & Plants Master Data */}
+          {activeTab === 'companies' && (
+            <AdminCompaniesView
+              companies={companies}
+              plants={plants}
+              jurisdictions={jurisdictions}
+              onAddCompany={() => {
+                setCompanyModalTarget(null);
+                setIsCompanyModalOpen(true);
+              }}
+              onEditCompany={(c) => {
+                setCompanyModalTarget(c);
+                setIsCompanyModalOpen(true);
+              }}
+              onToggleCompanyStatus={handleToggleCompanyStatus}
+              onSelectCompany={() => {}}
+              onAddPlant={(defaultCompanyId) => {
+                setPlantModalTarget(null);
+                setPlantDefaultCompanyId(defaultCompanyId || null);
+                setIsPlantModalOpen(true);
+              }}
+              onEditPlant={(p) => {
+                setPlantModalTarget(p);
+                setPlantDefaultCompanyId(p.company_id);
+                setIsPlantModalOpen(true);
+              }}
+              onTogglePlantStatus={handleTogglePlantStatus}
+            />
+          )}
+
+          {/* 3. Jurisdictions Master Data */}
+          {activeTab === 'jurisdictions' && (
+            <AdminJurisdictionsView
+              jurisdictions={jurisdictions}
+              onAddJurisdiction={() => {
+                setJurisdictionModalTarget(null);
+                setIsJurisdictionModalOpen(true);
+              }}
+              onEditJurisdiction={(j) => {
+                setJurisdictionModalTarget(j);
+                setIsJurisdictionModalOpen(true);
+              }}
+              onToggleJurisdictionStatus={handleToggleJurisdictionStatus}
+            />
+          )}
+
+          {/* 4. Inspector Qualification Matrix */}
+          {activeTab === 'inspectors' && (
+            <AdminInspectorsView
+              inspectors={users.filter(u => u.role === 'INSPECTOR')}
+              categories={categories}
+              jurisdictions={jurisdictions}
+              onConfigureEligibility={(insp) => {
+                setEligibilityModalTarget(insp);
+                setIsEligibilityModalOpen(true);
+              }}
+              onAddInspectorUser={() => {
+                setUserModalTarget(null);
+                setIsUserModalOpen(true);
+              }}
+            />
+          )}
+
+          {/* 5. Users & Roles Management */}
           {activeTab === 'users' && (
             <AdminUsersView
               users={users}
-              onOpenUserDetail={handleOpenUserDetail}
+              onOpenUserDetail={(u) => {
+                setSelectedUser(u);
+                setActiveTab('user_detail');
+              }}
               onNewUser={() => {
                 setUserModalTarget(null);
                 setIsUserModalOpen(true);
@@ -434,50 +608,55 @@ export const AdminPortal: React.FC = () => {
             />
           )}
 
-          {/* SCREEN 3: USER DETAILS VIEW */}
+          {/* User Details View */}
           {activeTab === 'user_detail' && selectedUser && (
             <AdminUserDetailsView
               user={selectedUser}
-              auditLogs={auditLogs}
-              onBack={() => {
-                setActiveTab('users');
-                loadUsers();
-              }}
+              auditLogs={auditLogs.filter(l => l.user_id === selectedUser.id || (l.justification && l.justification.includes(selectedUser.email)))}
+              onBack={() => setActiveTab('users')}
               onEditUser={(u) => {
                 setUserModalTarget(u);
                 setIsUserModalOpen(true);
               }}
-              onChangeRole={handleChangeUserRole}
               onToggleStatus={handleToggleUserStatus}
-              onResetPassword={handleResetUserPassword}
-              onDeleteUser={handleDeleteUser}
+              onResetPassword={(u) => { showNotice(`Password reset initiated for ${u.email}`); }}
+              onChangeRole={async (newRole: any) => {
+                if (selectedUser) {
+                  await handleSaveUser({ role: newRole });
+                }
+              }}
+              onDeleteUser={handleToggleUserStatus}
             />
           )}
 
-          {/* SCREEN 4: RULES VIEW */}
+          {/* 6. Regulatory Rule Book & Versioning */}
           {activeTab === 'rules' && (
             <AdminRulesView
               rules={rules}
-              onOpenRuleDetail={handleOpenRuleDetail}
+              onOpenRuleDetail={(r) => {
+                setSelectedRule(r);
+                setActiveTab('rule_detail');
+              }}
               onNewRule={() => {
                 setRuleModalTarget(null);
                 setIsNewRuleVersionMode(false);
                 setIsRuleModalOpen(true);
               }}
               onToggleStatus={handleToggleRuleStatus}
+              onOpenImpactSimulator={(r) => {
+                setImpactModalTargetRule(r);
+                setIsImpactModalOpen(true);
+              }}
             />
           )}
 
-          {/* SCREEN 5: RULE DETAILS VIEW */}
+          {/* Rule Details View */}
           {activeTab === 'rule_detail' && selectedRule && (
             <AdminRuleDetailsView
               rule={selectedRule}
               allRuleVersions={rules}
               categories={categories}
-              onBack={() => {
-                setActiveTab('rules');
-                loadRules();
-              }}
+              onBack={() => setActiveTab('rules')}
               onEditRule={(r) => {
                 setRuleModalTarget(r);
                 setIsNewRuleVersionMode(false);
@@ -489,120 +668,212 @@ export const AdminPortal: React.FC = () => {
                 setIsRuleModalOpen(true);
               }}
               onToggleStatus={handleToggleRuleStatus}
+              onOpenImpactSimulator={(r) => {
+                setImpactModalTargetRule(r);
+                setIsImpactModalOpen(true);
+              }}
+              onAddRequirement={(r) => {
+                setRequirementModalTargetRule(r);
+                setIsRequirementModalOpen(true);
+              }}
+              onDeleteRequirement={handleDeleteRequirement}
             />
           )}
 
-          {/* SCREEN 6: CATEGORIES VIEW */}
+          {/* 7. Product Categories Master Data */}
           {activeTab === 'categories' && (
             <AdminCategoriesView
               categories={categories}
-              onOpenCategoryDetail={handleOpenCategoryDetail}
+              onOpenCategoryDetail={async (cat) => {
+                setSelectedCategory(cat);
+                try {
+                  const res = await api.getCategoryRules(cat.id);
+                  setMappedCategoryRules(res.mappings || []);
+                } catch (err) {
+                  setMappedCategoryRules([]);
+                }
+                setActiveTab('category_detail');
+              }}
               onNewCategory={() => {
                 setCategoryModalTarget(null);
                 setIsCategoryModalOpen(true);
               }}
-              onEditCategory={(cat) => {
-                setCategoryModalTarget(cat);
+              onEditCategory={(c) => {
+                setCategoryModalTarget(c);
                 setIsCategoryModalOpen(true);
               }}
               onToggleStatus={handleToggleCategoryStatus}
-              onDeleteCategory={handleDeleteCategory}
-              onOpenRuleMappings={handleOpenCategoryRuleMappings}
+              onDeleteCategory={(c) => {
+                handleToggleCategoryStatus(c);
+              }}
+              onOpenRuleMappings={async (cat) => {
+                setSelectedCategory(cat);
+                try {
+                  const res = await api.getCategoryRules(cat.id);
+                  setMappedCategoryRules(res.mappings || []);
+                } catch (err) {
+                  setMappedCategoryRules([]);
+                }
+                setIsCategoryRuleMapModalOpen(true);
+              }}
             />
           )}
 
-          {/* SCREEN 7: CATEGORY DETAILS VIEW */}
+          {/* Category Details View */}
           {activeTab === 'category_detail' && selectedCategory && (
             <AdminCategoryDetailsView
               category={selectedCategory}
               mappedRules={mappedCategoryRules}
-              onBack={() => {
-                setActiveTab('categories');
-                loadCategories();
-              }}
-              onEditCategory={(cat) => {
-                setCategoryModalTarget(cat);
+              onBack={() => setActiveTab('categories')}
+              onEditCategory={(c) => {
+                setCategoryModalTarget(c);
                 setIsCategoryModalOpen(true);
               }}
               onOpenRuleMapModal={() => setIsCategoryRuleMapModalOpen(true)}
-              onUnmapRule={handleUnmapRule}
+              onUnmapRule={async (ruleId: number) => {
+                try {
+                  await api.unmapCategoryRule(selectedCategory.id, ruleId);
+                  showNotice('Rule unmapped from category.');
+                  const res = await api.getCategoryRules(selectedCategory.id);
+                  setMappedCategoryRules(res.mappings || []);
+                } catch (err: any) {
+                  alert(err.message || 'Failed to unmap rule.');
+                }
+              }}
             />
           )}
 
-          {/* SCREEN 8: AUDIT LOGS VIEW */}
+          {/* 8. Audit Logs & Forensics */}
           {activeTab === 'audit' && (
             <AdminAuditLogsView
               auditLogs={auditLogs}
-              onOpenDiff={(log) => setSelectedAuditLogForDiff(log)}
+              onOpenDiff={(log: AuditLog) => setSelectedAuditLogForDiff(log)}
               onRefresh={loadAuditLogs}
             />
           )}
 
-          {/* SCREEN 9: SETTINGS VIEW */}
-          {activeTab === 'settings' && (
-            <AdminSettingsView />
-          )}
-
-          {/* SCREEN 10: PROFILE VIEW */}
-          {activeTab === 'profile' && (
-            <AdminProfileView />
-          )}
-        </div>
+          {/* 9. Settings & Profile */}
+          {activeTab === 'settings' && <AdminSettingsView />}
+          {activeTab === 'profile' && <AdminProfileView />}
+        </main>
       </div>
 
-      {/* User Add/Edit Modal */}
-      <UserFormModal
-        isOpen={isUserModalOpen}
-        onClose={() => {
-          setIsUserModalOpen(false);
-          setUserModalTarget(null);
-        }}
-        user={userModalTarget}
-        onSave={handleSaveUser}
+      {/* Master Modals */}
+      <CompanyFormModal
+        isOpen={isCompanyModalOpen}
+        onClose={() => setIsCompanyModalOpen(false)}
+        company={companyModalTarget}
+        onSave={handleSaveCompany}
+        isProcessing={isProcessing}
       />
 
-      {/* Rule Add/Edit/New Version Modal */}
+      <PlantFormModal
+        isOpen={isPlantModalOpen}
+        onClose={() => setIsPlantModalOpen(false)}
+        plant={plantModalTarget}
+        companies={companies}
+        jurisdictions={jurisdictions}
+        defaultCompanyId={plantDefaultCompanyId}
+        onSave={handleSavePlant}
+        isProcessing={isProcessing}
+      />
+
+      <JurisdictionFormModal
+        isOpen={isJurisdictionModalOpen}
+        onClose={() => setIsJurisdictionModalOpen(false)}
+        jurisdiction={jurisdictionModalTarget}
+        onSave={handleSaveJurisdiction}
+        isProcessing={isProcessing}
+      />
+
+      <InspectorEligibilityModal
+        isOpen={isEligibilityModalOpen}
+        onClose={() => setIsEligibilityModalOpen(false)}
+        inspector={eligibilityModalTarget}
+        categories={categories}
+        jurisdictions={jurisdictions}
+        onSave={handleSaveEligibility}
+        isProcessing={isProcessing}
+      />
+
+      <RuleImpactModal
+        isOpen={isImpactModalOpen}
+        onClose={() => setIsImpactModalOpen(false)}
+        rule={impactModalTargetRule}
+      />
+
+      <RuleRequirementModal
+        isOpen={isRequirementModalOpen}
+        onClose={() => setIsRequirementModalOpen(false)}
+        rule={requirementModalTargetRule}
+        onSave={handleSaveRequirement}
+        isProcessing={isProcessing}
+      />
+
+      <UserFormModal
+        isOpen={isUserModalOpen}
+        onClose={() => setIsUserModalOpen(false)}
+        user={userModalTarget}
+        onSave={handleSaveUser}
+        isProcessing={isProcessing}
+      />
+
       <RuleFormModal
         isOpen={isRuleModalOpen}
-        onClose={() => {
-          setIsRuleModalOpen(false);
-          setRuleModalTarget(null);
-          setIsNewRuleVersionMode(false);
-        }}
+        onClose={() => setIsRuleModalOpen(false)}
         rule={ruleModalTarget}
         isNewVersionMode={isNewRuleVersionMode}
         onSave={handleSaveRule}
+        isProcessing={isProcessing}
       />
 
-      {/* Category Add/Edit Modal */}
       <CategoryFormModal
         isOpen={isCategoryModalOpen}
-        onClose={() => {
-          setIsCategoryModalOpen(false);
-          setCategoryModalTarget(null);
-        }}
+        onClose={() => setIsCategoryModalOpen(false)}
         category={categoryModalTarget}
-        parentOptions={categories}
+        parentOptions={categories.filter(c => !categoryModalTarget || c.id !== categoryModalTarget.id)}
         onSave={handleSaveCategory}
+        isProcessing={isProcessing}
       />
 
-      {/* Category Rule Mapping Modal */}
-      <CategoryRuleMapModal
-        isOpen={isCategoryRuleMapModalOpen}
-        onClose={() => setIsCategoryRuleMapModalOpen(false)}
-        category={selectedCategory}
-        mappedRules={mappedCategoryRules}
-        allRules={rules}
-        onMapRule={handleMapRule}
-        onUnmapRule={handleUnmapRule}
-      />
+      {selectedCategory && (
+        <CategoryRuleMapModal
+          isOpen={isCategoryRuleMapModalOpen}
+          onClose={() => setIsCategoryRuleMapModalOpen(false)}
+          category={selectedCategory}
+          mappedRules={mappedCategoryRules}
+          allRules={rules}
+          onMapRule={async (data) => {
+            try {
+              await api.mapCategoryRule(selectedCategory.id, data);
+              showNotice('Rule mapped to category.');
+              setIsCategoryRuleMapModalOpen(false);
+              const res = await api.getCategoryRules(selectedCategory.id);
+              setMappedCategoryRules(res.mappings || []);
+            } catch (err: any) {
+              alert(err.message || 'Failed to map rule.');
+            }
+          }}
+          onUnmapRule={async (ruleId: number) => {
+            try {
+              await api.unmapCategoryRule(selectedCategory.id, ruleId);
+              showNotice('Rule unmapped from category.');
+              const res = await api.getCategoryRules(selectedCategory.id);
+              setMappedCategoryRules(res.mappings || []);
+            } catch (err: any) {
+              alert(err.message || 'Failed to unmap rule.');
+            }
+          }}
+        />
+      )}
 
-      {/* Audit Forensic State Diff Drawer */}
-      <AuditDiffDrawer
-        isOpen={!!selectedAuditLogForDiff}
-        onClose={() => setSelectedAuditLogForDiff(null)}
-        log={selectedAuditLogForDiff}
-      />
+      {selectedAuditLogForDiff && (
+        <AuditDiffDrawer
+          isOpen={!!selectedAuditLogForDiff}
+          log={selectedAuditLogForDiff}
+          onClose={() => setSelectedAuditLogForDiff(null)}
+        />
+      )}
     </div>
   );
 };

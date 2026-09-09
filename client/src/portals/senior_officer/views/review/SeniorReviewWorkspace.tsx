@@ -103,10 +103,10 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
   const handleConfirmReturn = async (data: { reason: string; sections: string[] }) => {
     setIsProcessingAction(true);
     try {
-      await api.submitSeniorAction(currentCase.id, {
-        action: 'RETURN_FOR_REINSPECTION',
-        remarks: `${data.reason} [Sections: ${data.sections.join(', ')}]`,
-        override_reason: data.reason
+      await api.returnCaseForReinspection(currentCase.id, {
+        reason: data.reason,
+        remarks: `[Sections: ${data.sections.join(', ')}] ${data.reason}`,
+        statutory_citation: data.sections.join(', ')
       });
       setIsReturnModalOpen(false);
       onFinalizeComplete();
@@ -121,7 +121,7 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
   const handleConfirmFinalize = async () => {
     setIsProcessingAction(true);
     try {
-      await api.submitSeniorAction(currentCase.id, {
+      await api.finalizeCaseReview(currentCase.id, {
         action: finalizeDecisionType,
         remarks: seniorRemarks,
         override_reason: overrideReason,

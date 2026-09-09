@@ -6,7 +6,9 @@ import type { InspectionCase } from '../../types';
 import { SeniorSidebar, type SeniorNavTab } from './components/SeniorSidebar';
 import { SeniorTopbar } from './components/SeniorTopbar';
 import { SeniorDashboard } from './views/SeniorDashboard';
+import { SeniorUpcomingAuditsView } from './views/SeniorUpcomingAuditsView';
 import { SeniorReviewsView } from './views/SeniorReviewsView';
+import { SystemicIntelligenceView } from './views/SystemicIntelligenceView';
 import { SeniorHistoryView } from './views/SeniorHistoryView';
 import { SeniorNotificationsView } from './views/SeniorNotificationsView';
 import { SeniorProfileView } from './views/SeniorProfileView';
@@ -94,7 +96,7 @@ export const SeniorOfficerPortal: React.FC = () => {
   ).length;
 
   const currentNavTab: SeniorNavTab = 
-    (activeTab === 'home' || activeTab === 'reviews' || activeTab === 'history' || activeTab === 'notifications' || activeTab === 'profile')
+    (activeTab === 'home' || activeTab === 'upcoming' || activeTab === 'reviews' || activeTab === 'intelligence' || activeTab === 'history' || activeTab === 'notifications' || activeTab === 'profile')
       ? activeTab
       : 'home';
 
@@ -139,14 +141,24 @@ export const SeniorOfficerPortal: React.FC = () => {
                 setActiveTab('reviews');
                 loadQueue();
               }}
+              onViewUpcoming={() => setActiveTab('upcoming')}
+              onViewIntelligence={() => setActiveTab('intelligence')}
               onViewHistory={() => {
                 setActiveTab('history');
                 loadAllInspections();
               }}
+              onRefreshData={refreshAllData}
             />
           )}
 
-          {/* SCREEN 2: REVIEWS QUEUE */}
+          {/* SCREEN 2: UPCOMING & ACTIVE FIELD AUDITS */}
+          {activeTab === 'upcoming' && (
+            <SeniorUpcomingAuditsView
+              onOpenCase={handleOpenCaseForReview}
+            />
+          )}
+
+          {/* SCREEN 3: REVIEWS QUEUE */}
           {activeTab === 'reviews' && (
             <SeniorReviewsView
               queue={queue}
@@ -156,7 +168,12 @@ export const SeniorOfficerPortal: React.FC = () => {
             />
           )}
 
-          {/* SCREEN 3: REVIEW WORKSPACE */}
+          {/* SCREEN 4: SYSTEMIC VIOLATION INTELLIGENCE (INNOVATION #5) */}
+          {activeTab === 'intelligence' && (
+            <SystemicIntelligenceView />
+          )}
+
+          {/* SCREEN 5: REVIEW WORKSPACE */}
           {activeTab === 'review_workspace' && selectedCaseForReview && (
             <SeniorReviewWorkspace
               inspectionCase={selectedCaseForReview}
@@ -171,7 +188,7 @@ export const SeniorOfficerPortal: React.FC = () => {
             />
           )}
 
-          {/* SCREEN 4: HISTORY */}
+          {/* SCREEN 6: HISTORY */}
           {activeTab === 'history' && (
             <SeniorHistoryView
               inspections={allInspections}
@@ -179,7 +196,7 @@ export const SeniorOfficerPortal: React.FC = () => {
             />
           )}
 
-          {/* SCREEN 5: NOTIFICATIONS */}
+          {/* SCREEN 7: NOTIFICATIONS */}
           {activeTab === 'notifications' && (
             <SeniorNotificationsView
               inspections={allInspections}
@@ -187,7 +204,7 @@ export const SeniorOfficerPortal: React.FC = () => {
             />
           )}
 
-          {/* SCREEN 6: PROFILE */}
+          {/* SCREEN 8: PROFILE */}
           {activeTab === 'profile' && (
             <SeniorProfileView />
           )}

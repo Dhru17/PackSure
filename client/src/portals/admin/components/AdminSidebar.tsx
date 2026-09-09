@@ -8,12 +8,18 @@ import {
   Settings, 
   User, 
   LogOut, 
-  ShieldAlert
+  ShieldAlert,
+  Building2,
+  MapPin,
+  ShieldCheck
 } from 'lucide-react';
 import { useAuthStore } from '../../../state/authStore';
 
 export type AdminNavTab = 
   | 'home' 
+  | 'companies'
+  | 'jurisdictions'
+  | 'inspectors'
   | 'users' 
   | 'rules' 
   | 'categories' 
@@ -35,14 +41,17 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   const { logout } = useAuthStore();
 
   const navItems = [
-    { id: 'home' as AdminNavTab, label: 'Home', icon: Home },
+    { id: 'home' as AdminNavTab, label: 'Overview', icon: Home },
+    { id: 'companies' as AdminNavTab, label: 'Companies & Plants', icon: Building2 },
+    { id: 'jurisdictions' as AdminNavTab, label: 'Jurisdictions', icon: MapPin },
+    { id: 'inspectors' as AdminNavTab, label: 'Inspector Matrix', icon: ShieldCheck },
     { 
       id: 'users' as AdminNavTab, 
-      label: 'Users', 
+      label: 'Users & Roles', 
       icon: Users,
       badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined
     },
-    { id: 'rules' as AdminNavTab, label: 'Rules', icon: Scale },
+    { id: 'rules' as AdminNavTab, label: 'Rule Book & Impact', icon: Scale },
     { id: 'categories' as AdminNavTab, label: 'Categories', icon: FolderTree },
     { id: 'audit' as AdminNavTab, label: 'Audit Logs', icon: FileText },
     { id: 'settings' as AdminNavTab, label: 'Settings', icon: Settings },

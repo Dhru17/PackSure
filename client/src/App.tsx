@@ -5,6 +5,7 @@ import { AppHeader } from './components/layout/AppHeader';
 import { InspectorPortal } from './portals/inspector/InspectorPortal';
 import { SeniorOfficerPortal } from './portals/senior_officer/SeniorOfficerPortal';
 import { AdminPortal } from './portals/admin/AdminPortal';
+import { CompanyPortal } from './portals/company/CompanyPortal';
 import { Scale } from 'lucide-react';
 
 export function App() {
@@ -38,6 +39,7 @@ export function App() {
         {activeRole === 'INSPECTOR' && <InspectorPortal />}
         {activeRole === 'SENIOR_OFFICER' && <SeniorOfficerPortal />}
         {activeRole === 'ADMIN' && <AdminPortal />}
+        {activeRole === 'COMPANY' && <CompanyPortal />}
       </main>
       <footer className="border-t border-[#D8DDE3] bg-white py-4 text-center text-xs text-[#64748B]">
         <div className="max-w-[1600px] mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">

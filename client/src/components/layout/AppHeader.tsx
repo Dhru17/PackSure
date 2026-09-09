@@ -20,6 +20,12 @@ export const AppHeader: React.FC = () => {
           tag: 'ADMIN',
           style: 'bg-slate-100 text-slate-800 border-slate-300'
         };
+      case 'COMPANY':
+        return {
+          label: 'Regulated Entity Representative',
+          tag: 'ENTERPRISE',
+          style: 'bg-emerald-50 text-emerald-900 border-emerald-300'
+        };
       default:
         return {
           label: 'Legal Metrology Inspector',
