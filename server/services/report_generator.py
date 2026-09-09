@@ -238,21 +238,33 @@ class ReportGenerator:
         for label, k1, k2 in map_keys:
             d1 = ext_json.get(k1, {})
             v1 = d1.get('value') or d1.get('extracted_value') or ''
-            src = d1.get('source_image') or d1.get('image_source') or 'Packaging'
-            conf = d1.get('confidence', 0.0)
+            src1 = d1.get('source_image') or d1.get('image_source')
+            conf1 = d1.get('confidence', 0.0)
 
             if k2:
                 d2 = ext_json.get(k2, {})
                 v2 = d2.get('value') or d2.get('extracted_value') or ''
+                src2 = d2.get('source_image') or d2.get('image_source')
+                conf2 = d2.get('confidence', 0.0)
                 val_comb = f"{v1} {v2}".strip() if (v1 or v2) else 'Not Detected'
-                conf = max(conf, d2.get('confidence', 0.0))
+                conf = max(conf1, conf2)
+                src = (src1 if v1 else None) or src2 or 'Packaging'
             else:
                 val_comb = v1 if v1 else 'Not Detected'
+                conf = conf1
+                src = src1 or 'Packaging'
 
+            # Add Tax Phrasing evidence quote if MRP
+            if label == 'MRP & Tax Phrasing' and val_comb != 'Not Detected':
+                raw_txt = d1.get('raw_ocr_text') or d1.get('raw_text') or ''
+                if 'tax' in raw_txt.lower() and 'tax' not in val_comb.lower():
+                    val_comb = f"{val_comb} (Incl. of all taxes)"
+
+            val_comb = val_comb.replace('₹', 'Rs. ')
             fusion_summary.append([
                 Paragraph(f"<b>{label}</b>", cell_style),
                 Paragraph(src, cell_style),
-                Paragraph(val_comb[:60], cell_style),
+                Paragraph(val_comb[:75], cell_style),
                 Paragraph(f"{round(conf*100)}%" if conf > 0 else "-", cell_style)
             ])
 
@@ -293,8 +305,8 @@ class ReportGenerator:
 
             ocr_rows.append([
                 Paragraph(f"<code>{k}</code>", cell_style),
-                Paragraph(str(val)[:45], cell_style),
-                Paragraph(str(raw)[:45], cell_style),
+                Paragraph(str(val).replace('₹', 'Rs. ')[:45], cell_style),
+                Paragraph(str(raw).replace('₹', 'Rs. ')[:45], cell_style),
                 Paragraph(str(src), cell_style),
                 Paragraph(f"{round(conf*100)}%" if conf > 0 else "-", cell_style)
             ])
@@ -326,29 +338,56 @@ class ReportGenerator:
             ]
         ]
 
-        declarations = scan_data.get('declarations', [])
-        for d in declarations:
-            st = str(d.get('status', 'PASS')).upper()
-            if st == 'PASS':
-                st_color = '#16a34a'
-            elif st == 'FAIL':
-                st_color = '#dc2626'
-            elif st == 'REVIEW REQUIRED':
-                st_color = '#d97706'
-            else:
-                st_color = '#64748b'
+        # Use compliance_checks if provided, else fall back to declarations
+        compliance_checks = scan_data.get('compliance_checks', [])
+        if compliance_checks:
+            for c in compliance_checks:
+                st = str(c.get('status', 'PASS')).replace('_', ' ').upper()
+                if st == 'PASS':
+                    st_color = '#16a34a'
+                elif st == 'FAIL':
+                    st_color = '#dc2626'
+                elif st == 'REVIEW REQUIRED':
+                    st_color = '#d97706'
+                else:
+                    st_color = '#64748b'
 
-            r_name = d.get('rule_name') or d.get('title') or 'Statutory Rule'
-            val = d.get('extracted_value', 'Not Detected')
-            why = d.get('why_decision') or d.get('remarks') or ''
+                r_name = c.get('rule_title') or c.get('rule_code') or 'Rule 6'
+                req = c.get('expected_condition') or c.get('statutory_citation') or 'Statutory Declaration'
+                val = c.get('evaluated_value') or 'Not Detected'
+                why = c.get('reason_explanation') or ''
 
-            rule_rows.append([
-                Paragraph(f"<b>{r_name}</b>", cell_style),
-                Paragraph(d.get('title', ''), cell_style),
-                Paragraph(str(val)[:50], cell_style),
-                Paragraph(f"<font color='{st_color}'><b>{st}</b></font>", cell_style),
-                Paragraph(why[:75], cell_style)
-            ])
+                rule_rows.append([
+                    Paragraph(f"<b>{r_name}</b>", cell_style),
+                    Paragraph(str(req).replace('₹', 'Rs. ')[:60], cell_style),
+                    Paragraph(str(val).replace('₹', 'Rs. ')[:50], cell_style),
+                    Paragraph(f"<font color='{st_color}'><b>{st}</b></font>", cell_style),
+                    Paragraph(str(why).replace('₹', 'Rs. ')[:90], cell_style)
+                ])
+        else:
+            declarations = scan_data.get('declarations', [])
+            for d in declarations:
+                st = str(d.get('status', 'PASS')).replace('_', ' ').upper()
+                if st == 'PASS':
+                    st_color = '#16a34a'
+                elif st == 'FAIL':
+                    st_color = '#dc2626'
+                elif st == 'REVIEW REQUIRED':
+                    st_color = '#d97706'
+                else:
+                    st_color = '#64748b'
+
+                r_name = d.get('rule_name') or d.get('title') or 'Statutory Rule'
+                val = d.get('extracted_value', 'Not Detected')
+                why = d.get('why_decision') or d.get('remarks') or ''
+
+                rule_rows.append([
+                    Paragraph(f"<b>{r_name}</b>", cell_style),
+                    Paragraph(d.get('title', ''), cell_style),
+                    Paragraph(str(val)[:50], cell_style),
+                    Paragraph(f"<font color='{st_color}'><b>{st}</b></font>", cell_style),
+                    Paragraph(str(why)[:75], cell_style)
+                ])
 
         t_rules = Table(rule_rows, colWidths=[120, 95, 105, 70, 150])
         t_rules.setStyle(TableStyle([
@@ -383,12 +422,18 @@ class ReportGenerator:
             ]
 
             for v in violations:
+                r_code = v.get('rule_code') or v.get('rule_number') or 'Rule 6'
+                issue = v.get('violation_title') or v.get('issue') or v.get('title') or 'Statutory Non-Compliance'
+                snippet = v.get('evidence_snippet') or v.get('ocr_evidence') or 'N/A'
+                reason = v.get('description') or v.get('reason_for_decision') or v.get('reason_for_failure') or ''
+                correction = v.get('suggested_correction') or v.get('recommended_action') or 'Verify packaging.'
+
                 viol_rows.append([
-                    Paragraph(f"<b>{v.get('rule_number', 'Rule 6')}</b>", cell_style),
-                    Paragraph(f"<b>{v.get('issue') or v.get('title', '')}</b>", cell_style),
-                    Paragraph(f"<i>\"{v.get('ocr_evidence', 'N/A')}\"</i>", cell_style),
-                    Paragraph(v.get('reason_for_decision') or v.get('reason_for_failure', ''), cell_style),
-                    Paragraph(v.get('suggested_correction') or v.get('recommended_action', 'Verify packaging.'), cell_style)
+                    Paragraph(f"<b>{r_code}</b>", cell_style),
+                    Paragraph(f"<b>{issue}</b>", cell_style),
+                    Paragraph(f"<i>\"{snippet}\"</i>", cell_style),
+                    Paragraph(reason, cell_style),
+                    Paragraph(correction, cell_style)
                 ])
 
             t_viols = Table(viol_rows, colWidths=[90, 110, 110, 115, 115])

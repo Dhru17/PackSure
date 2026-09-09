@@ -1,4 +1,4 @@
-﻿import os
+import os
 from flask import Blueprint, jsonify, send_file, request, g
 from config import Config
 from models import db, InspectionCase, InspectionReport, AuditLog, AuditActionType
@@ -13,7 +13,59 @@ def get_report_pdf(case_id):
     pdf_filename = f"report_LMPC_{case.id:05d}.pdf"
     pdf_path = os.path.join(Config.REPORTS_FOLDER, pdf_filename)
 
-    if not os.path.exists(pdf_path):
+    force_refresh = request.args.get("refresh", "false").lower() == "true" or not os.path.exists(pdf_path)
+
+    if force_refresh:
+        # Build 16-field extracted_json mapping from stored Declarations
+        field_key_map = {
+            "PRODUCT_NAME": "product_name",
+            "GENERIC_COMMODITY": "generic_commodity_name",
+            "BRAND_NAME": "brand_name",
+            "MANUFACTURER_NAME": "manufacturer_name",
+            "MANUFACTURER_ADDRESS": "manufacturer_address",
+            "PACKER_NAME": "packer_name",
+            "IMPORTER_NAME": "importer_name",
+            "NET_QUANTITY": "net_quantity",
+            "UNIT": "unit",
+            "MRP": "mrp",
+            "MFG_DATE": "manufacturing_or_packing_date",
+            "EXP_DATE": "exp_date",
+            "LOT_NUMBER": "batch_or_lot_number",
+            "CONSUMER_CARE_PHONE": "consumer_care_phone",
+            "CONSUMER_CARE_EMAIL": "consumer_care_email",
+            "CONSUMER_CARE_ADDRESS": "consumer_care_address",
+            "COUNTRY_OF_ORIGIN": "country_of_origin",
+            "UNIT_SALE_PRICE": "unit_sale_price",
+            "BARCODE": "barcode",
+            "FSSAI_NUMBER": "fssai_number"
+        }
+
+        ext_json = {}
+        for d in case.declarations:
+            f_type_str = d.field_type.value if hasattr(d.field_type, "value") else str(d.field_type)
+            k = field_key_map.get(f_type_str, f_type_str.lower())
+            surface = d.evidence.surface_type.value if d.evidence and hasattr(d.evidence, "surface_type") else "Packaging"
+            ext_json[k] = {
+                "value": d.extracted_value,
+                "extracted_value": d.extracted_value,
+                "confidence": d.confidence,
+                "source_image": surface,
+                "image_source": surface,
+                "raw_ocr_text": d.raw_ocr_text or d.extracted_value or "",
+                "raw_text": d.raw_ocr_text or d.extracted_value or ""
+            }
+
+        if "generic_commodity_name" in ext_json and "generic_name" not in ext_json:
+            ext_json["generic_name"] = ext_json["generic_commodity_name"]
+        if "brand_name" not in ext_json and case.product and case.product.brand_name:
+            ext_json["brand_name"] = {
+                "value": case.product.brand_name,
+                "extracted_value": case.product.brand_name,
+                "confidence": 0.95,
+                "source_image": "Product Info",
+                "raw_ocr_text": case.product.brand_name
+            }
+
         # Prepare scan dictionary format expected by ReportGenerator
         scan_dict = {
             "id": case.id,
@@ -34,7 +86,9 @@ def get_report_pdf(case_id):
                     "annotated_path": os.path.join(Config.UPLOAD_FOLDER, os.path.basename(e.annotated_storage_path)) if e.annotated_storage_path else None
                 } for e in case.evidences
             ],
+            "extracted_json": ext_json,
             "declarations": [d.to_dict() for d in case.declarations],
+            "compliance_checks": [c.to_dict() for c in case.compliance_checks],
             "violations": [v.to_dict() for v in case.violations],
             "total_checks": case.total_checks,
             "passed_checks": case.passed_checks,
@@ -55,6 +109,9 @@ def get_report_pdf(case_id):
                 file_size_bytes=os.path.getsize(pdf_path) if os.path.exists(pdf_path) else 0
             )
             db.session.add(report)
+            db.session.commit()
+        else:
+            report.file_size_bytes = os.path.getsize(pdf_path) if os.path.exists(pdf_path) else 0
             db.session.commit()
 
     return send_file(pdf_path, mimetype="application/pdf", as_attachment=False, download_name=pdf_filename)

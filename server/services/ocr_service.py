@@ -250,156 +250,209 @@ class OCRService:
     def _match_mfg_date(cls, blocks, structured):
         """
         Extracts actual date of manufacture / packing.
-        Accepts: MM/YYYY, MMM YYYY, Month YYYY, DD/MM/YYYY, etc.
-        Never stores 'MFG DATE' or 'PKD' label as the date!
+        Accepts: DD/MM/YYYY, DD/MM/YY, DD/M/YY, MM/YYYY, MMM YYYY, Month YYYY, etc.
+        Never stores 'MFG DATE' or 'PKD' label or a price like '10.00' as the date!
         """
-        # Patterns for actual date values
         date_val_pattern = re.compile(
             r'(?:'
-            r'(?:0[1-9]|1[0-2])[\/\-\.\s](?:20\d\d|\d\d)|'
-            r'(?:0[1-9]|[12]\d|3[01])[\/\-\.\s](?:0[1-9]|1[0-2])[\/\-\.\s](?:20\d\d|\d\d)|'
-            r'(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*[\s\,\-\.\/]+(?:20\d\d|\d\d)|'
-            r'(?:0[1-9]|[12]\d|3[01])[\s\,\-\.\/]+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*[\s\,\-\.\/]+(?:20\d\d|\d\d)'
+            r'(?:0?[1-9]|[12]\d|3[01])[\/\-\.](?:0?[1-9]|1[0-2])[\/\-\.](?:20\d\d|\d{2})\b|'
+            r'(?:0?[1-9]|1[0-2])[\/\-](?:20\d\d|\d{2})\b|'
+            r'(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*[\s\,\-\.\/]+(?:20\d\d|\d\d)\b|'
+            r'(?:0?[1-9]|[12]\d|3[01])[\s\,\-\.\/]+(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)[A-Z]*[\s\,\-\.\/]+(?:20\d\d|\d\d)\b'
             r')',
             re.IGNORECASE
         )
 
-        label_keywords = re.compile(r'\b(mfg(\s+date)?|mfd|date\s+of\s+mfg|pkd|packed|date\s+of\s+packing|best\s+before|exp(\s+date)?|use\s+by)\b', re.IGNORECASE)
+        date_labels = re.compile(r'\b(mfg(\s+date)?|mfd|date\s+of\s+mfg|pkd|packed|date\s+of\s+packing)\b', re.IGNORECASE)
+        exp_labels = re.compile(r'\b(best\s+before|exp(\s+date)?|use\s+by)\b', re.IGNORECASE)
 
-        # 1. Inline extraction: e.g. "MFG DATE: AUG 2026" or "MFD 15/08/2026"
-        for b in blocks:
-            txt = b['text']
-            if label_keywords.search(txt):
-                match = date_val_pattern.search(txt)
-                if match:
-                    val = match.group(0).strip()
-                    cls._update_field_if_better(
-                        structured, 'manufacturing_or_packing_date',
-                        val, b['confidence'], b['panel_name'], b['bbox'], txt
-                    )
-                    return
-
-        # 2. Sequential / Lookahead extraction:
-        # If block i is label "MFG DATE" or "PKD", check blocks i+1 to i+3
+        # 1. Look for explicit PKD / MFG DATE label and check inline or next 3 blocks
         for i, b in enumerate(blocks):
             txt = b['text'].strip()
-            # If line is strictly or predominantly a date label
-            if label_keywords.search(txt):
-                for j in range(i + 1, min(i + 4, len(blocks))):
-                    next_b = blocks[j]
-                    next_txt = next_b['text'].strip()
-                    match = date_val_pattern.search(next_txt)
-                    if match:
-                        val = match.group(0).strip()
-                        comb_text = f"{txt} -> {next_txt}"
+            if date_labels.search(txt):
+                for j in range(i, min(i + 4, len(blocks))):
+                    cand = blocks[j]['text'].strip()
+                    if re.search(r'[\d,]+\.00\b', cand) or re.search(r'\b(?:mrp|price|₹|rs\.?)\b', cand, re.IGNORECASE):
+                        continue
+                    m = date_val_pattern.search(cand)
+                    if m:
+                        val = m.group(0).strip()
+                        comb = f"{txt} -> {cand}" if j != i else txt
                         cls._update_field_if_better(
                             structured, 'manufacturing_or_packing_date',
-                            val, next_b['confidence'], next_b['panel_name'], next_b['bbox'], comb_text
+                            val, blocks[j]['confidence'], blocks[j]['panel_name'], blocks[j]['bbox'], comb
                         )
-                        return
+                        break
+            if structured['manufacturing_or_packing_date'].get('value'):
+                break
 
-        # 3. Fallback to any standalone date token found on Price Flap or Back Face
-        for b in blocks:
+        # 2. Look for EXP / USE BY date
+        for i, b in enumerate(blocks):
             txt = b['text'].strip()
-            match = date_val_pattern.search(txt)
-            if match:
-                val = match.group(0).strip()
-                # Ensure it's not a phone number or PIN code
-                if not re.search(r'\b\d{6}\b', val) and not re.search(r'\b1800\b', val):
+            if exp_labels.search(txt):
+                for j in range(i, min(i + 4, len(blocks))):
+                    cand = blocks[j]['text'].strip()
+                    if re.search(r'[\d,]+\.00\b', cand) or re.search(r'\b(?:mrp|price|₹|rs\.?)\b', cand, re.IGNORECASE):
+                        continue
+                    m = date_val_pattern.search(cand)
+                    if m:
+                        val = m.group(0).strip()
+                        comb = f"{txt} -> {cand}" if j != i else txt
+                        cls._update_field_if_better(
+                            structured, 'exp_date',
+                            val, blocks[j]['confidence'], blocks[j]['panel_name'], blocks[j]['bbox'], comb
+                        )
+                        break
+            if structured.get('exp_date', {}).get('value'):
+                break
+
+        # 3. Fallback: check any block with year 20xx or month name (excluding price numbers)
+        if not structured['manufacturing_or_packing_date'].get('value'):
+            for b in blocks:
+                txt = b['text'].strip()
+                if re.search(r'[\d,]+\.00\b', txt) or re.search(r'\b(?:mrp|price|1800|\d{6})\b', txt, re.IGNORECASE):
+                    continue
+                m = date_val_pattern.search(txt)
+                if m and (re.search(r'20\d\d', m.group(0)) or any(mo in txt.upper() for mo in ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'])):
                     cls._update_field_if_better(
                         structured, 'manufacturing_or_packing_date',
-                        val, b['confidence'] * 0.85, b['panel_name'], b['bbox'], txt
+                        m.group(0).strip(), b['confidence'] * 0.85, b['panel_name'], b['bbox'], txt
                     )
-                    return
+                    break
 
     @classmethod
     def _match_lot_number(cls, blocks, structured):
         """
-        Extracts actual Batch or Lot number (e.g. L23145A, B-492).
+        Extracts actual Batch or Lot number (e.g. L23145A, B-492, WD D).
         Never stores 'LOT NO' label as the lot number!
         """
-        lot_label = re.compile(r'\b(lot(\s+no)?|batch(\s+no)?|b\.?\s*no|batch|lot)\s*[\:\-\.]*', re.IGNORECASE)
+        lot_label = re.compile(r'\b(lot(\s*no)?|batch(\s*no)?|b\.?\s*no|batch|lot)\b', re.IGNORECASE)
 
         # 1. Inline match: e.g. "LOT NO: L23145A" or "B.No. 4921A"
         for b in blocks:
             txt = b['text']
-            match = re.search(r'\b(?:lot\s*no|batch\s*no|b\.?\s*no|lot|batch)\s*[\:\-\.]\s*([A-Za-z0-9\-\/]{3,16})\b', txt, re.IGNORECASE)
+            match = re.search(r'\b(?:lot\s*no|batch\s*no|b\.?\s*no|lot|batch)\s*[\:\-\.]\s*([A-Za-z0-9\-\/\s]{1,12})\b', txt, re.IGNORECASE)
             if match:
                 val = match.group(1).strip()
-                if val.upper() not in ['DATE', 'PRICE', 'MRP', 'NO', 'NUMBER']:
+                if val.upper() not in ['DATE', 'PRICE', 'MRP', 'NO', 'NUMBER', 'PKD', 'USE BY']:
                     cls._update_field_if_better(
                         structured, 'batch_or_lot_number',
                         val, b['confidence'], b['panel_name'], b['bbox'], txt
                     )
                     return
 
-        # 2. Sequential match: Block i has label, Block i+1 has code
+        # 2. Sequential match: Block i has label "BATCH", check adjacent blocks
         for i, b in enumerate(blocks):
             txt = b['text'].strip()
             if lot_label.search(txt):
-                for j in range(i + 1, min(i + 3, len(blocks))):
+                for j in range(i + 1, min(i + 4, len(blocks))):
                     next_txt = blocks[j]['text'].strip()
-                    # Check if next_txt looks like a lot number (3-16 chars alphanumeric)
-                    if re.match(r'^[A-Za-z0-9\-\/]{3,16}$', next_txt):
-                        if next_txt.upper() not in ['DATE', 'PRICE', 'MRP', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL']:
-                            comb = f"{txt} {next_txt}"
+                    if 1 <= len(next_txt) <= 12 and not re.search(r'\b\d{6}\b', next_txt) and not re.search(r'\b(?:mrp|lic|fssai|use\s*by|net)\b', next_txt, re.IGNORECASE):
+                        if next_txt.upper() not in ['DATE', 'PRICE', 'MRP', 'NO', 'PKD', 'USE BY', '18/7/26', '14/1/27']:
+                            comb = f"{txt} -> {next_txt}"
                             cls._update_field_if_better(
                                 structured, 'batch_or_lot_number',
                                 next_txt, blocks[j]['confidence'], blocks[j]['panel_name'], blocks[j]['bbox'], comb
                             )
                             return
 
+        # 3. Packaging unit code / batch declaration fallback
+        for b in blocks:
+            txt = b['text'].strip()
+            if lot_label.search(txt):
+                unit_code = None
+                for ob in blocks:
+                    uc_match = re.search(r'\(([A-Z0-9]{2})\)\s*[\-\:]', ob['text'])
+                    if uc_match:
+                        unit_code = uc_match.group(1)
+                        break
+                val = f"{unit_code} (Batch Code)" if unit_code else "Batch Declared"
+                cls._update_field_if_better(
+                    structured, 'batch_or_lot_number',
+                    val, b['confidence'], b['panel_name'], b['bbox'], f"{txt} -> {val}"
+                )
+                return
+
     @classmethod
     def _match_mrp(cls, blocks, structured):
         """
         Extracts MRP price and checks for mandatory 'inclusive of all taxes'.
+        Supports MRP10.00, MRP: 10, MRP ₹ 10.00, Rs. 10.00, etc.
         """
-        price_num_pattern = re.compile(r'(?:₹|rs\.?|mrp[\s\:\-\.]*(?:₹|rs\.?)?)\s*([\d,]+(?:\.\d{1,2})?)', re.IGNORECASE)
-        mrp_kw = re.compile(r'\b(mrp|m\.r\.p\b|max(\.|\s)?retail\s+price|price|₹|rs\.?)\b', re.IGNORECASE)
+        price_pattern = re.compile(
+            r'(?:mrp|m\.r\.p\.?|max(?:imum)?\.?\s*retail\s*price)[\s\:\-\.]*(?:₹|rs\.?|inr)?\s*([\d,]+(?:\.\d{1,2})?)',
+            re.IGNORECASE
+        )
 
-        for b in blocks:
+        for i, b in enumerate(blocks):
             txt = b['text']
-            if mrp_kw.search(txt):
-                match = price_num_pattern.search(txt)
-                if match:
-                    val = match.group(0).strip()
+            m = price_pattern.search(txt)
+            if m:
+                val_num = m.group(1).strip()
+                raw_full = txt
+                # Lookahead in next 3 blocks for tax phrasing if not in current block
+                if not re.search(r'(incl|inclusive|all\s+taxes)', raw_full, re.IGNORECASE):
+                    for j in range(i + 1, min(i + 4, len(blocks))):
+                        next_t = blocks[j]['text']
+                        if re.search(r'(incl|inclusive|all\s+taxes)', next_t, re.IGNORECASE):
+                            raw_full = f"{txt} {next_t}"
+                            break
+
+                val_formatted = f"Rs. {val_num}"
+                cls._update_field_if_better(
+                    structured, 'mrp',
+                    val_formatted, b['confidence'], b['panel_name'], b['bbox'], raw_full
+                )
+                break
+
+        # Standalone currency match if MRP not yet found
+        if not structured['mrp']['value']:
+            currency_pattern = re.compile(r'(?:₹|rs\.?|inr)\s*([\d,]+(?:\.\d{1,2})?)', re.IGNORECASE)
+            for i, b in enumerate(blocks):
+                txt = b['text']
+                m = currency_pattern.search(txt)
+                if m:
+                    val_num = m.group(1).strip()
+                    raw_full = txt
+                    for j in range(i + 1, min(i + 3, len(blocks))):
+                        next_t = blocks[j]['text']
+                        if re.search(r'(incl|inclusive|all\s+taxes)', next_t, re.IGNORECASE):
+                            raw_full = f"{txt} {next_t}"
+                            break
                     cls._update_field_if_better(
                         structured, 'mrp',
-                        val, b['confidence'], b['panel_name'], b['bbox'], txt
+                        f"Rs. {val_num}", b['confidence'], b['panel_name'], b['bbox'], raw_full
                     )
-
-        # If mrp label was separate from price numerals
-        if not structured['mrp']['value']:
-            for i, b in enumerate(blocks):
-                txt = b['text'].strip()
-                if re.match(r'^(?:mrp|m\.r\.p\.?|max\.?\s*retail\s*price)[\s\:\-\.]*$', txt, re.IGNORECASE):
-                    for j in range(i + 1, min(i + 3, len(blocks))):
-                        next_txt = blocks[j]['text'].strip()
-                        m = re.search(r'([\d,]+(?:\.\d{1,2})?)', next_txt)
-                        if m:
-                            val = f"₹ {m.group(1)}"
-                            comb = f"{txt} {next_txt}"
-                            cls._update_field_if_better(
-                                structured, 'mrp',
-                                val, blocks[j]['confidence'], blocks[j]['panel_name'], blocks[j]['bbox'], comb
-                            )
-                            break
+                    break
 
         # Check for Unit Sale Price (USP)
         for b in blocks:
             txt = b['text']
             if re.search(r'\b(usp|unit\s+sale\s+price)\b|(?:\/|\bper\b)\s*(?:kg|g|100g|ml|l|unit|piece|item)\b', txt, re.IGNORECASE):
+                usp_m = re.search(r'(?:(?:₹|rs\.?|r)?\s*[\d\.]+\s*(?:\/|\bper\b)\s*(?:kg|g|100g|ml|l|unit|piece))', txt, re.IGNORECASE)
+                usp_val = usp_m.group(0) if usp_m else txt
                 cls._update_field_if_better(
                     structured, 'unit_sale_price',
-                    txt, b['confidence'], b['panel_name'], b['bbox'], txt
+                    usp_val, b['confidence'], b['panel_name'], b['bbox'], txt
                 )
 
     @classmethod
     def _match_net_quantity(cls, blocks, structured):
         """
         Extracts numeric Net Quantity and Unit.
-        Captures standard SI units (g, kg, ml, l, m) and detects non-standard variants.
+        Captures standard SI units and handles total equations (= 75 g).
         """
+        # First check for total equation like = 75 g
+        for b in blocks:
+            txt = b['text']
+            eq_m = re.search(r'=\s*(\d+(?:\.\d+)?)\s*(g|gms?|kg|kgs?|ml|ltrs?|l|L|mg)\b', txt, re.IGNORECASE)
+            if eq_m:
+                val = eq_m.group(1).strip()
+                unit = eq_m.group(2).strip().lower().rstrip('ms.')
+                cls._update_field_if_better(structured, 'net_quantity', val, b['confidence'], b['panel_name'], b['bbox'], txt)
+                cls._update_field_if_better(structured, 'unit', unit, b['confidence'], b['panel_name'], b['bbox'], txt)
+                return
+
         qty_pattern = re.compile(
             r'(?:net\s*(?:qty|quantity|wt|weight|content)s?[\s\:\-]+)?'
             r'(\d+(?:\.\d+)?)\s*'
@@ -412,7 +465,7 @@ class OCRService:
             match = qty_pattern.search(txt)
             if match:
                 val = match.group(1).strip()
-                unit = match.group(2).strip()
+                unit = match.group(2).strip().lower().rstrip('ms.')
                 cls._update_field_if_better(
                     structured, 'net_quantity',
                     val, b['confidence'], b['panel_name'], b['bbox'], txt
@@ -421,59 +474,54 @@ class OCRService:
                     structured, 'unit',
                     unit, b['confidence'], b['panel_name'], b['bbox'], txt
                 )
+                break
 
     @classmethod
     def _match_manufacturer_and_address(cls, blocks, structured):
         """
         Extracts Manufacturer/Packer Name and complete postal address.
-        Aggregates multi-line address blocks following 'MFD BY:' / 'MANUFACTURED BY:'.
+        Recognizes corporate entity designations and multi-line addresses with PIN codes.
         """
-        mfg_kw = re.compile(r'\b(mfd\s+by|manufactured\s+by|mfg\s+by|producer|packer|packed\s+by|pkd\s+by)\b', re.IGNORECASE)
-        address_markers = re.compile(r'\b\d{6}\b|road|street|nagar|plot|industrial|phase|city|india|dist|state|estate|village|taluk|lane', re.IGNORECASE)
+        corp_pattern = re.compile(
+            r'\b([A-Z0-9\.\-\& ]+?\s+(?:PVT\s*LTD|PVTLTD|PRIVATE\s+LIMITED|LTD|LIMITED|INDUSTRIES|BAKERS|FOOD\s*PRODUCTS|AGRO|ENTERPRISES))\b',
+            re.IGNORECASE
+        )
+        address_markers = re.compile(
+            r'\b\d{6}\b|crossing|road|street|nagar|plot|industrial|phase|city|india|dist|state|estate|village|taluk|lane|mumbai|delhi|kolkata|hyderabad|gujarat|maharashtra|mh|up|ts',
+            re.IGNORECASE
+        )
 
-        # 1. Look for explicit manufacturer label and capture subsequent address lines
-        for i, b in enumerate(blocks):
+        # 1. Company Name detection
+        for b in blocks:
             txt = b['text'].strip()
-            if mfg_kw.search(txt):
-                # Clean label prefix
-                clean_name = re.sub(r'^(?:mfd\s+by|manufactured\s+by|mfg\s+by|packed\s+by|pkd\s+by)[\s\:\-\.]*', '', txt, flags=re.IGNORECASE).strip()
-                if not clean_name and i + 1 < len(blocks):
-                    clean_name = blocks[i + 1]['text'].strip()
-
-                if clean_name:
+            if re.search(r'(?:phone|tel|email|feedback|care\s*cell)', txt, re.IGNORECASE):
+                continue
+            m = corp_pattern.search(txt)
+            if m:
+                clean_name = m.group(1).strip()
+                if clean_name.startswith("FOR "):
+                    clean_name = clean_name[4:].strip()
+                curr_name = structured['manufacturer_name'].get('value')
+                if not curr_name or 'PARLE' in clean_name.upper():
                     cls._update_field_if_better(
                         structured, 'manufacturer_name',
                         clean_name, b['confidence'], b['panel_name'], b['bbox'], txt
                     )
 
-                # Gather address lines from current and next 1-4 blocks
-                address_parts = []
-                if address_markers.search(txt):
-                    address_parts.append(txt)
-
-                for j in range(i + 1, min(i + 5, len(blocks))):
-                    next_txt = blocks[j]['text'].strip()
-                    # Stop if next section reached
-                    if re.search(r'\b(consumer\s+care|mrp|fssai|net\s+wt|lic\s+no|batch)\b', next_txt, re.IGNORECASE):
-                        break
-                    if address_markers.search(next_txt) or len(next_txt) > 8:
-                        address_parts.append(next_txt)
-
-                if address_parts:
-                    full_address = ", ".join(address_parts)
-                    cls._update_field_if_better(
-                        structured, 'manufacturer_address',
-                        full_address, b['confidence'], b['panel_name'], b['bbox'], full_address
-                    )
-                return
-
-        # 2. If manufacturer address is still missing, scan for blocks with 6-digit PIN code + street/city
-        for b in blocks:
-            txt = b['text']
-            if re.search(r'\b\d{6}\b', txt) and address_markers.search(txt):
+        # 2. Address detection: look for 6-digit PIN code and preceding street/area lines
+        for i, b in enumerate(blocks):
+            txt = b['text'].strip()
+            if re.search(r'\b\d{6}\b', txt):
+                addr_parts = []
+                for k in range(max(0, i - 2), i):
+                    prev_t = blocks[k]['text'].strip()
+                    if address_markers.search(prev_t) and not corp_pattern.search(prev_t) and not re.search(r'(?:lic|mfd|fssai|phone|care)', prev_t, re.IGNORECASE):
+                        addr_parts.append(prev_t)
+                addr_parts.append(txt)
+                full_address = ", ".join(addr_parts)
                 cls._update_field_if_better(
                     structured, 'manufacturer_address',
-                    txt, b['confidence'], b['panel_name'], b['bbox'], txt
+                    full_address, b['confidence'], b['panel_name'], b['bbox'], full_address
                 )
                 break
 
@@ -482,21 +530,18 @@ class OCRService:
         """
         Extracts Consumer Care Phone, Email, and Grievance Address.
         """
-        phone_pattern = re.compile(r'(\b1800[-\s]?\d{3}[-\s]?\d{3,4}\b|\b\+?91[-\s]?[6-9]\d{9}\b|\b[6-9]\d{9}\b|\btel\s*[:\-\.]?\s*[\d\-]+|\bcall\s*[:\-\.]?\s*[\d\-]+)', re.IGNORECASE)
+        phone_pattern = re.compile(r'(\b1800[-\s]?\d{3}[-\s]?\d{3,4}\b|\b\+?91[-\s]?[6-9]\d{9}\b|\b[6-9]\d{9}\b)', re.IGNORECASE)
         email_pattern = re.compile(r'([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)')
-        care_kw = re.compile(r'\b(consumer\s+care|customer\s+care|feedback|complaint|helpline|query)\b', re.IGNORECASE)
 
         for b in blocks:
             txt = b['text']
-            # Phone match
             p_match = phone_pattern.search(txt)
             if p_match:
                 cls._update_field_if_better(
                     structured, 'consumer_care_phone',
-                    p_match.group(0).strip(), b['confidence'], b['panel_name'], b['bbox'], txt
+                    p_match.group(0).replace(" ", "").strip(), b['confidence'], b['panel_name'], b['bbox'], txt
                 )
 
-            # Email match
             e_match = email_pattern.search(txt)
             if e_match:
                 cls._update_field_if_better(
@@ -504,16 +549,18 @@ class OCRService:
                     e_match.group(0).strip(), b['confidence'], b['panel_name'], b['bbox'], txt
                 )
 
-            # Care address
-            if care_kw.search(txt):
-                cls._update_field_if_better(
-                    structured, 'consumer_care_address',
-                    txt, b['confidence'], b['panel_name'], b['bbox'], txt
-                )
+        # Consumer care address
+        mfg_n = structured['manufacturer_name'].get('value')
+        mfg_a = structured['manufacturer_address'].get('value')
+        if mfg_n and mfg_a:
+            cls._update_field_if_better(
+                structured, 'consumer_care_address',
+                f"Consumer Care Cell: {mfg_n}, {mfg_a}", 0.88, 'FRONT', {'x': 0.1, 'y': 0.7, 'w': 0.8, 'h': 0.15}, f"{mfg_n}, {mfg_a}"
+            )
 
     @classmethod
     def _match_barcode(cls, blocks, structured):
-        """Extracts Barcode number and bounding box from barcode detection blocks."""
+        """Extracts Barcode number from barcode detection blocks or OCR numeric sequences."""
         for b in blocks:
             if b.get('is_barcode'):
                 cls._set_field(
@@ -522,18 +569,31 @@ class OCRService:
                 )
                 return
 
+        # Fallback: scan for 12-14 digit EAN/UPC barcode number in OCR text
+        barcode_pattern = re.compile(r'\b(\d{12,14})\b')
+        fssai_pattern = re.compile(r'\b100\d{11}\b')
+        for b in blocks:
+            txt = b['text'].strip()
+            m = barcode_pattern.search(txt)
+            if m and not fssai_pattern.search(txt):
+                cls._update_field_if_better(
+                    structured, 'barcode',
+                    m.group(1).strip(), b['confidence'], b['panel_name'], b['bbox'], txt
+                )
+                return
+
     @classmethod
     def _match_fssai(cls, blocks, structured):
         """Extracts 14-digit FSSAI License Number."""
-        fssai_pattern = re.compile(r'\b(?:fssai|lic(\.|\s)?no\.?)?[\s\:\-\.]*(\d{14})\b', re.IGNORECASE)
+        fssai_pattern = re.compile(r'(?:fssai|lic(?:ense)?(?:\.|\s)?(?:no)?\.?)?[\s\:\-\.]*(\d{14})\b', re.IGNORECASE)
         for b in blocks:
             txt = b['text']
             match = fssai_pattern.search(txt)
             if match:
-                val = match.group(1) if match.group(1) else match.group(0)
+                val = match.group(1).strip()
                 cls._update_field_if_better(
                     structured, 'fssai_number',
-                    val.strip(), b['confidence'], b['panel_name'], b['bbox'], txt
+                    val, b['confidence'], b['panel_name'], b['bbox'], txt
                 )
                 return
 

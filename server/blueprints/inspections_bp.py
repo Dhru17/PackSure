@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import json
 from datetime import datetime, timezone
@@ -332,39 +333,67 @@ def run_analysis(case_id):
         ocr_success=ocr_success
     )
 
-    # 4. Save Structured Declarations
-    for ed in eval_decls:
-        dtype_str = ed.get("declaration_type", "PRODUCT_NAME")
-        try:
-            dtype = DeclarationFieldType(dtype_str)
-        except ValueError:
-            dtype = DeclarationFieldType.PRODUCT_NAME
+    # 4. Save Structured Declarations directly from 16-field record
+    structured_field_map = [
+        ('brand_name', DeclarationFieldType.BRAND_NAME, 'Brand Name'),
+        ('generic_commodity_name', DeclarationFieldType.GENERIC_COMMODITY, 'Generic Commodity Name'),
+        ('product_name', DeclarationFieldType.PRODUCT_NAME, 'Product Name'),
+        ('manufacturer_name', DeclarationFieldType.MANUFACTURER_NAME, 'Manufacturer Name'),
+        ('manufacturer_address', DeclarationFieldType.MANUFACTURER_ADDRESS, 'Manufacturer Address'),
+        ('packer_name', DeclarationFieldType.PACKER_NAME, 'Packer Name'),
+        ('importer_name', DeclarationFieldType.IMPORTER_NAME, 'Importer Name'),
+        ('net_quantity', DeclarationFieldType.NET_QUANTITY, 'Net Quantity'),
+        ('unit', DeclarationFieldType.UNIT, 'Measurement Unit'),
+        ('mrp', DeclarationFieldType.MRP, 'Maximum Retail Price (MRP)'),
+        ('manufacturing_or_packing_date', DeclarationFieldType.MFG_DATE, 'Date of Manufacture / Packing'),
+        ('batch_or_lot_number', DeclarationFieldType.LOT_NUMBER, 'Batch / Lot Number'),
+        ('consumer_care_phone', DeclarationFieldType.CONSUMER_CARE_PHONE, 'Consumer Care Phone'),
+        ('consumer_care_email', DeclarationFieldType.CONSUMER_CARE_EMAIL, 'Consumer Care Email'),
+        ('consumer_care_address', DeclarationFieldType.CONSUMER_CARE_ADDRESS, 'Consumer Care Address'),
+        ('country_of_origin', DeclarationFieldType.COUNTRY_OF_ORIGIN, 'Country of Origin'),
+        ('unit_sale_price', DeclarationFieldType.UNIT_SALE_PRICE, 'Unit Sale Price (USP)'),
+        ('barcode', DeclarationFieldType.BARCODE, 'Barcode / EAN'),
+        ('fssai_number', DeclarationFieldType.FSSAI_NUMBER, 'FSSAI License Number')
+    ]
 
-        source_panel = ed.get("source_panel") or ed.get("image_source") or "FRONT"
-        matching_ev = next((e for e in evidences if e.surface_type.value.upper() == str(source_panel).upper()), evidences[0])
-
-        bbox = ed.get("bbox", {})
-        decl = Declaration(
-            case_id=case.id,
-            evidence_id=matching_ev.id,
-            field_type=dtype,
-            title=ed.get("title", "Declaration"),
-            raw_ocr_text=ed.get("raw_ocr_text", ""),
-            extracted_value=ed.get("extracted_value", ""),
-            confidence=ed.get("confidence", 0.0),
-            bbox_x=bbox.get("x", 0.0),
-            bbox_y=bbox.get("y", 0.0),
-            bbox_w=bbox.get("w", 0.0),
-            bbox_h=bbox.get("h", 0.0),
-            extraction_method=ExtractionMethod.OCR_TOKEN_MATCHER,
-            verification_status=VerificationStatus.UNVERIFIED
-        )
-        db.session.add(decl)
+    saved_types = set()
+    for k, dtype, title in structured_field_map:
+        item = structured.get(k, {})
+        val = item.get('value')
+        if val:
+            source_panel = item.get('source_image') or item.get('image_source') or "FRONT"
+            matching_ev = next((e for e in evidences if e.surface_type.value.upper() == str(source_panel).upper()), evidences[0])
+            bbox = item.get('bounding_box') or {}
+            decl = Declaration(
+                case_id=case.id,
+                evidence_id=matching_ev.id,
+                field_type=dtype,
+                title=title,
+                raw_ocr_text=item.get('raw_ocr_text') or str(val),
+                extracted_value=str(val),
+                confidence=item.get('confidence', 0.85),
+                bbox_x=bbox.get('x', 0.0),
+                bbox_y=bbox.get('y', 0.0),
+                bbox_w=bbox.get('w', 0.0),
+                bbox_h=bbox.get('h', 0.0),
+                extraction_method=ExtractionMethod.OCR_TOKEN_MATCHER,
+                verification_status=VerificationStatus.UNVERIFIED
+            )
+            db.session.add(decl)
+            saved_types.add(dtype)
 
     # 5. Save Compliance Checks & Violations against Database Rules
     for ed in eval_decls:
-        rule_code = ed.get("rule_name", "RULE_6").split(" - ")[0].replace(" ", "_").upper()
-        rule = RegulatoryRule.query.filter(RegulatoryRule.rule_code.ilike(f"%{rule_code}%")).first()
+        raw_r_name = ed.get("rule_name", "RULE_6")
+        clean_code = re.sub(r'_+', '_', re.sub(r'[^A-Za-z0-9]', '_', raw_r_name.split(' - ')[0])).strip('_').upper()
+        if clean_code.startswith("RULE_6_1_C"):
+            clean_code = "RULE_6_1_C"
+        elif clean_code.startswith("RULE_7"):
+            clean_code = "RULE_7"
+
+        rule = RegulatoryRule.query.filter_by(rule_code=clean_code).first()
+        if not rule:
+            rule = RegulatoryRule.query.filter(RegulatoryRule.rule_code.ilike(f"%{clean_code}%")).first()
         if not rule:
             rule = RegulatoryRule.query.first() # fallback default
 
@@ -384,7 +413,7 @@ def run_analysis(case_id):
             confidence=ed.get("confidence", 0.0),
             reason_explanation=ed.get("why_decision") or ed.get("remarks", ""),
             evaluated_value=ed.get("extracted_value", ""),
-            expected_condition=ed.get("title", ""),
+            expected_condition=rule.title if rule else ed.get("title", ""),
             evidence_id=matching_ev.id
         )
         db.session.add(chk)

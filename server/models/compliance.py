@@ -1,4 +1,4 @@
-﻿import enum
+import enum
 import json
 from datetime import datetime, timezone
 from . import db
@@ -24,6 +24,8 @@ class SeniorDecision(str, enum.Enum):
     UPHELD = "UPHELD"
     OVERRULED = "OVERRULED"
     DISMISSED = "DISMISSED"
+    CONFIRMED = "CONFIRMED"
+    OVERRIDDEN = "OVERRIDDEN"
 
 class ComplianceCheck(db.Model):
     __tablename__ = "compliance_checks"
