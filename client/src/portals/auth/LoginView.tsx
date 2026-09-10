@@ -147,7 +147,7 @@ export const LoginView: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickLogin('compliance@britannia.com')}
+                onClick={() => handleQuickLogin('compliance@britannia.co.in')}
                 className="px-2 py-2 text-xs font-semibold rounded-lg bg-[#F5F3FF] hover:bg-[#EDE9FE] border border-[#DDD6FE] text-[#6B21A8] transition text-center cursor-pointer"
               >
                 🏢 Company
