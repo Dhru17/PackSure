@@ -9,8 +9,10 @@ import {
   CheckCircle2, 
   ArrowRight, 
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Scan
 } from 'lucide-react';
+import { LiveBarcodeScanner } from './LiveBarcodeScanner';
 
 interface Step1ProductProps {
   products: Product[];
@@ -47,13 +49,17 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
   const [isFoundProduct, setIsFoundProduct] = useState<boolean | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState('');
+  const [isLiveScannerOpen, setIsLiveScannerOpen] = useState(false);
+  const [scannerNotice, setScannerNotice] = useState<string | null>(null);
 
-  // Barcode Lookup
-  const handleBarcodeLookup = async () => {
-    if (!barcodeInput.trim()) return;
+  // Barcode Lookup with specific string or input state
+  const handleBarcodeLookupWith = async (barcodeVal?: string) => {
+    const target = (barcodeVal !== undefined ? barcodeVal : barcodeInput).trim();
+    if (!target) return;
     setIsSearching(true);
+    setScannerNotice(null);
     try {
-      const res = await api.lookupBarcode(barcodeInput.trim());
+      const res = await api.lookupBarcode(target);
       if (res.found && res.product) {
         setProductForm({
           brand_name: res.product.brand_name || '',
@@ -70,15 +76,20 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
           manufacturer_name: res.product.manufacturer_name || 'Registered Manufacturer'
         });
         setIsFoundProduct(true);
+        setScannerNotice(`Product identified from catalog: ${res.product.brand_name} — ${res.product.commodity_name}`);
       } else {
         setIsFoundProduct(false);
+        setScannerNotice(`Barcode ${target} not in registered catalog. Please enter product details below.`);
       }
     } catch {
       setIsFoundProduct(false);
+      setScannerNotice(`Unable to reach catalog. Please enter product details below.`);
     } finally {
       setIsSearching(false);
     }
   };
+
+  const handleBarcodeLookup = () => handleBarcodeLookupWith();
 
   // Select existing product from catalog
   const handleSelectExisting = (prod: Product) => {
@@ -207,26 +218,109 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
       {/* Input Action Controls based on selected method */}
       <div className="p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl">
         {method === 'barcode' && (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-            <div className="relative flex-1">
-              <Barcode className="w-4 h-4 text-[#64748B] absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Enter or scan 13-digit barcode (e.g. 8901030914101)..."
-                value={barcodeInput}
-                onChange={(e) => setBarcodeInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleBarcodeLookup()}
-                className="w-full pl-10 pr-4 py-2 bg-white border border-[#CBD5E1] rounded-lg text-xs font-mono font-bold text-[#1E293B] focus:outline-none focus:border-[#174A7E]"
-              />
+          <div className="space-y-3">
+            {/* Live Camera Scanner Launcher Banner */}
+            <div className="p-4 bg-gradient-to-r from-[#EFF6FF] via-[#F8FAFC] to-[#F0FDF4] border border-[#BFDBFE] rounded-xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 shadow-2xs">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-[#174A7E] text-white shadow-xs">
+                  <Scan className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-[#1E293B] flex items-center gap-2">
+                    <span>Live Camera Barcode Scanner</span>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                      Phone & Webcam
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#64748B] mt-0.5">
+                    Scan EAN-13 / GTIN barcodes in real time using phone camera or laptop webcam
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsLiveScannerOpen(true)}
+                className="px-4 py-2.5 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-xl text-xs transition shadow-xs flex items-center justify-center gap-2 cursor-pointer flex-shrink-0"
+              >
+                <Camera className="w-4 h-4" />
+                <span>Open Camera Scanner</span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleBarcodeLookup}
-              disabled={isSearching || !barcodeInput.trim()}
-              className="px-5 py-2 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-lg text-xs transition shadow-2xs disabled:opacity-50"
-            >
-              {isSearching ? 'Looking up...' : 'Lookup Product'}
-            </button>
+
+            {scannerNotice && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-800 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                <span>{scannerNotice}</span>
+              </div>
+            )}
+
+            {/* Manual input fallback */}
+            <div className="pt-1">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[#64748B] mb-1.5">
+                Or enter 13-digit barcode manually:
+              </div>
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                <div className="relative flex-1">
+                  <Barcode className="w-4 h-4 text-[#64748B] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Enter or scan 13-digit barcode (e.g. 8901030914101)..."
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleBarcodeLookup()}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-[#CBD5E1] rounded-lg text-xs font-mono font-bold text-[#1E293B] focus:outline-none focus:border-[#174A7E]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleBarcodeLookup}
+                  disabled={isSearching || !barcodeInput.trim()}
+                  className="px-5 py-2 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-lg text-xs transition shadow-2xs disabled:opacity-50 cursor-pointer"
+                >
+                  {isSearching ? 'Looking up...' : 'Lookup Product'}
+                </button>
+              </div>
+
+              {/* Quick demo sample buttons */}
+              <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-[#64748B] font-semibold">Demo Samples:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBarcodeInput('8901063012345');
+                    handleBarcodeLookupWith('8901063012345');
+                  }}
+                  className="text-[10px] font-mono px-2 py-0.5 rounded bg-white hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] cursor-pointer transition"
+                  title="Britannia Good Day Butter Cookies"
+                >
+                  8901063012345 (Good Day)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBarcodeInput('8901719129926');
+                    handleBarcodeLookupWith('8901719129926');
+                  }}
+                  className="text-[10px] font-mono px-2 py-0.5 rounded bg-white hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] cursor-pointer transition"
+                  title="Parle-G Biscuits"
+                >
+                  8901719129926 (Parle-G)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBarcodeInput('8906009076843');
+                    handleBarcodeLookupWith('8906009076843');
+                  }}
+                  className="text-[10px] font-mono px-2 py-0.5 rounded bg-white hover:bg-[#F1F5F9] border border-[#CBD5E1] text-[#1E293B] cursor-pointer transition"
+                  title="Unibic Cookies"
+                >
+                  8906009076843 (Unibic)
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -441,6 +535,18 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Live Camera Barcode Scanner Modal */}
+      {isLiveScannerOpen && (
+        <LiveBarcodeScanner
+          onScanSuccess={(scannedCode) => {
+            setIsLiveScannerOpen(false);
+            setBarcodeInput(scannedCode);
+            handleBarcodeLookupWith(scannedCode);
+          }}
+          onClose={() => setIsLiveScannerOpen(false)}
+        />
+      )}
     </div>
   );
 };
