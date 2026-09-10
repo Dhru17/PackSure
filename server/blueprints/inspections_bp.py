@@ -154,16 +154,6 @@ def schedule_audit():
         plant = db.session.get(Plant, plant_id)
         if not plant:
             return jsonify({"error": "Specified plant not found."}), 404
-        if plant.jurisdiction_id:
-            # Check jurisdiction eligibility
-            has_jur_elig = InspectorJurisdictionEligibility.query.filter_by(
-                inspector_id=inspector.id,
-                jurisdiction_id=plant.jurisdiction_id,
-                is_active=True
-            ).first()
-            total_jur = InspectorJurisdictionEligibility.query.filter_by(inspector_id=inspector.id, is_active=True).count()
-            if total_jur > 0 and not has_jur_elig:
-                return jsonify({"error": f"Inspector {inspector.full_name} is not authorized for plant jurisdiction [{plant.jurisdiction_rel.name if plant.jurisdiction_rel else 'Assigned Area'}]."}), 400
 
     # Resolve or create Product
     prod = None
@@ -190,8 +180,8 @@ def schedule_audit():
         db.session.add(prod)
         db.session.flush()
 
-    # Category Eligibility Validation
-    target_category_id = prod.category_id if prod else category_id
+    # Category Eligibility Validation (Mandatory certification check)
+    target_category_id = category_id or (prod.category_id if prod else None)
     if target_category_id:
         has_cat_elig = InspectorCategoryEligibility.query.filter_by(
             inspector_id=inspector.id,
@@ -205,6 +195,17 @@ def schedule_audit():
         if total_cat_elig > 0 and not has_cat_elig:
             cat_obj = db.session.get(ProductCategory, target_category_id)
             return jsonify({"error": f"Inspector {inspector.full_name} is not certified/qualified for product category [{cat_obj.name if cat_obj else target_category_id}]."}), 400
+
+    # Jurisdiction Eligibility Validation (Geographic jurisdiction check)
+    if plant and plant.jurisdiction_id:
+        has_jur_elig = InspectorJurisdictionEligibility.query.filter_by(
+            inspector_id=inspector.id,
+            jurisdiction_id=plant.jurisdiction_id,
+            is_active=True
+        ).first()
+        total_jur = InspectorJurisdictionEligibility.query.filter_by(inspector_id=inspector.id, is_active=True).count()
+        if total_jur > 0 and not has_jur_elig:
+            return jsonify({"error": f"Inspector {inspector.full_name} is not authorized for plant jurisdiction [{plant.jurisdiction_rel.name if plant.jurisdiction_rel else 'Assigned Area'}]."}), 400
 
     # Parse Scheduled Date
     scheduled_dt = None
@@ -573,6 +574,56 @@ def get_inspection(case_id):
     d["senior_reviews"] = [sr.to_dict() for sr in case.senior_reviews]
     d["reports"] = [rpt.to_dict() for rpt in case.reports]
     d["audit_logs"] = [a.to_dict() for a in case.audit_logs]
+
+    # Statutory Enterprise Documents & Certifications
+    mfg_id = case.product.manufacturer_id if case.product else None
+    cat_id = case.product.category_id if case.product else None
+    docs = []
+    if mfg_id:
+        docs = CompanyDocument.query.filter(
+            (CompanyDocument.company_id == mfg_id) | (CompanyDocument.category_id == cat_id)
+        ).all()
+    elif case.product and case.product.brand_name:
+        mfg = Manufacturer.query.filter(Manufacturer.name.ilike(f"%{case.product.brand_name}%")).first()
+        if mfg:
+            docs = CompanyDocument.query.filter(
+                (CompanyDocument.company_id == mfg.id) | (CompanyDocument.category_id == cat_id)
+            ).all()
+
+    if not docs:
+        docs = CompanyDocument.query.limit(4).all()
+
+    d["company_documents"] = [doc.to_dict() for doc in docs]
+    d["required_documents"] = [
+        {
+            "code": "PACKER_REGISTRATION",
+            "title": "Director of Legal Metrology Packer Registration (Rule 27)",
+            "is_mandatory": True,
+            "rule_citation": "Rule 27, Legal Metrology (Packaged Commodities) Rules, 2011",
+            "description": "Mandatory statutory pre-market packer registration certificate with Central/State Legal Metrology department."
+        },
+        {
+            "code": "MODEL_APPROVAL_CERTIFICATE",
+            "title": "Legal Metrology Model Approval Certificate (Section 22)",
+            "is_mandatory": bool(case.product and case.product.category and any(k in case.product.category.name.lower() for k in ["weight", "measure", "scale", "meter", "dispenser"])),
+            "rule_citation": "Section 22, Legal Metrology Act, 2009",
+            "description": "Prescribed statutory model approval certificate for measuring units and declared dimensions."
+        },
+        {
+            "code": "MANUFACTURING_LICENSE",
+            "title": "Manufacturing & Packaging License / FSSAI Registration",
+            "is_mandatory": True,
+            "rule_citation": "Rule 6(1)(a), Legal Metrology Rules & FSS Act",
+            "description": "Valid state industrial manufacturing license or statutory food authority registration."
+        },
+        {
+            "code": "IMPORT_PERMIT",
+            "title": "Importer Registration & Country of Origin Declaration",
+            "is_mandatory": bool(case.product and case.product.is_imported),
+            "rule_citation": "Rule 27(1) & Rule 6(1)(f), PCR 2011",
+            "description": "Mandatory importer registration certificate and customs origin documentation."
+        }
+    ]
     return jsonify(d)
 
 @inspections_bp.route("/<int:case_id>/evidence", methods=["POST"])
@@ -641,7 +692,11 @@ def upload_evidence(case_id):
         contrast_score=quality.get("contrast_score"),
         rotation_angle=quality.get("rotation_angle", 0.0),
         quality_verdict=verdict,
-        quality_summary=quality.get("summary")
+        quality_summary=quality.get("summary"),
+        predicted_surface=surface_type.value,
+        is_surface_mismatch=False,
+        surface_mismatch_warning=None,
+        features_detected_json=json.dumps([])
     )
     db.session.add(evidence)
     
@@ -655,13 +710,60 @@ def upload_evidence(case_id):
         action_type=AuditActionType.EVIDENCE_UPLOADED,
         entity_name="PackageEvidence",
         entity_id=str(evidence.id),
-        new_state_json=json.dumps({"surface": surface_type.value, "file": unique_filename, "quality": verdict.value}),
+        new_state_json=json.dumps({
+            "surface": surface_type.value,
+            "file": unique_filename,
+            "quality": verdict.value
+        }),
         justification=f"Photo uploaded for {surface_type.value} surface."
     )
     db.session.add(audit)
     db.session.commit()
 
-    return jsonify({"evidence": evidence.to_dict(), "quality_analysis": quality}), 201
+    return jsonify({
+        "evidence": evidence.to_dict(),
+        "quality_analysis": quality,
+        "surface_classification": None
+    }), 201
+
+@inspections_bp.route("/<int:case_id>/evidence/<int:evidence_id>/reassign", methods=["POST"])
+@require_auth
+def reassign_evidence_surface(case_id, evidence_id):
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    err_resp, err_code = check_case_access(case, g.current_user, for_mutation=True)
+    if err_resp:
+        return err_resp, err_code
+
+    ev = PackageEvidence.query.filter_by(id=evidence_id, case_id=case.id).first_or_404()
+    data = request.get_json() or {}
+    new_surface_str = data.get("new_surface_type", "BACK").upper()
+
+    try:
+        new_surface = SurfaceType(new_surface_str)
+    except ValueError:
+        return jsonify({"error": f"Invalid surface type '{new_surface_str}'."}), 400
+
+    prev_surface = ev.surface_type.value
+    
+    # Check if target surface already has an evidence; if so, swap or replace
+    target_ev = PackageEvidence.query.filter_by(case_id=case.id, surface_type=new_surface).first()
+    if target_ev and target_ev.id != ev.id:
+        target_ev.surface_type = ev.surface_type
+        target_ev.is_surface_mismatch = False
+        target_ev.surface_mismatch_warning = None
+
+    ev.surface_type = new_surface
+    ev.is_surface_mismatch = False
+    ev.surface_mismatch_warning = None
+    db.session.commit()
+
+    return jsonify({
+        "message": f"Surface successfully reassigned from {prev_surface} to {new_surface.value}.",
+        "evidence": ev.to_dict()
+    })
 
 @inspections_bp.route("/<int:case_id>/evidence/<int:evidence_id>", methods=["DELETE"])
 @require_auth
@@ -1071,14 +1173,17 @@ def run_analysis(case_id):
         )
         db.session.add(viol)
 
-    # 6. Generate Annotated Bounding-Box Images for each panel
+    # 6. Generate Annotated Bounding-Box Images for each panel (safely)
     for ev in evidences:
-        fname = os.path.basename(ev.storage_path)
-        orig_path = os.path.join(Config.UPLOAD_FOLDER, fname)
-        ann_filename = f"ann_{fname}"
-        ann_path = os.path.join(Config.UPLOAD_FOLDER, ann_filename)
-        VisionAnalyzer.generate_annotated_image(orig_path, eval_decls, ann_path, panel_filter=ev.surface_type.value)
-        ev.annotated_storage_path = f"/api/media/uploads/{ann_filename}"
+        try:
+            fname = os.path.basename(ev.storage_path)
+            orig_path = os.path.join(Config.UPLOAD_FOLDER, fname)
+            ann_filename = f"ann_{fname}"
+            ann_path = os.path.join(Config.UPLOAD_FOLDER, ann_filename)
+            VisionAnalyzer.generate_annotated_image(orig_path, eval_decls, ann_path, panel_filter=ev.surface_type.value)
+            ev.annotated_storage_path = f"/api/media/uploads/{ann_filename}"
+        except Exception as ann_err:
+            print(f"Warning: Annotation generation failed for evidence {ev.id}: {ann_err}")
 
     # 7. Update Case Summary & Advance State to INSPECTOR_REVIEW
     case.status = CaseStatus.ANALYSIS_COMPLETE

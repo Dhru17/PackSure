@@ -50,6 +50,8 @@ class User(db.Model):
             "phone_number": self.phone_number,
             "company_id": self.company_id,
             "is_active": self.is_active,
+            "category_eligibilities": [ce.to_dict() for ce in (self.category_eligibilities or []) if ce.is_active],
+            "jurisdiction_eligibilities": [je.to_dict() for je in (self.jurisdiction_eligibilities or []) if je.is_active],
             "last_login_at": self.last_login_at.isoformat() if self.last_login_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
