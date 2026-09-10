@@ -53,6 +53,30 @@ export const api = {
   getProducts: (search = "") => apiFetch<{ products: any[] }>(`/api/products?search=${encodeURIComponent(search)}`),
   lookupBarcode: (barcode: string) => apiFetch<{ found: boolean; product: any; previous_inspections: any[] }>(`/api/products/lookup/${barcode}`),
   createProduct: (data: any) => apiFetch<{ product: any }>("/api/products", { method: "POST", body: JSON.stringify(data) }),
+  identifyProductFromImage: (formData: FormData) =>
+    apiFetch<{
+      found: boolean;
+      method: string;
+      barcode?: string;
+      product?: any;
+      extracted_fields: {
+        brand_name?: string;
+        commodity_name?: string;
+        category_name?: string;
+        package_type?: string;
+        default_net_quantity?: string;
+        default_mrp?: number;
+        is_imported?: boolean;
+        country_of_origin?: string;
+        pdp_width_cm?: number;
+        pdp_height_cm?: number;
+        pdp_area_cm2?: number;
+        manufacturer_name?: string;
+      };
+      image_url?: string;
+      detected_texts?: string[];
+      message?: string;
+    }>("/api/products/identify-image", { method: "POST", body: formData }),
 
   // Inspections
   getInspectorOverview: () => apiFetch<any>("/api/inspections/overview"),

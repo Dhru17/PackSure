@@ -10,7 +10,10 @@ import {
   ArrowRight, 
   Sparkles,
   ShieldCheck,
-  Scan
+  Scan,
+  Upload,
+  RefreshCw,
+  RotateCcw
 } from 'lucide-react';
 import { LiveBarcodeScanner } from './LiveBarcodeScanner';
 
@@ -111,16 +114,62 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
     setIsFoundProduct(true);
   };
 
-  // Mock Capture Image identification
-  const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  const [capturedImagePreview, setCapturedImagePreview] = useState<string | null>(null);
+  const [imageAnalysisMessage, setImageAnalysisMessage] = useState<string | null>(null);
+  const [imageDetectedTokens, setImageDetectedTokens] = useState<string[]>([]);
+
+  // Real AI OCR & Barcode Image identification
+  const handleImageCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
-    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-    setProductForm(prev => ({
-      ...prev,
-      commodity_name: prev.commodity_name || nameWithoutExt
-    }));
-    setIsFoundProduct(false);
+
+    // Local thumbnail preview
+    const previewUrl = URL.createObjectURL(file);
+    setCapturedImagePreview(previewUrl);
+    setIsAnalyzingImage(true);
+    setImageAnalysisMessage(null);
+    setImageDetectedTokens([]);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.identifyProductFromImage(formData);
+
+      if (res && res.extracted_fields) {
+        setProductForm(prev => ({
+          ...prev,
+          brand_name: res.extracted_fields.brand_name || prev.brand_name,
+          commodity_name: res.extracted_fields.commodity_name || prev.commodity_name,
+          category_name: res.extracted_fields.category_name || prev.category_name,
+          package_type: res.extracted_fields.package_type || prev.package_type,
+          default_net_quantity: res.extracted_fields.default_net_quantity || prev.default_net_quantity,
+          default_mrp: res.extracted_fields.default_mrp || prev.default_mrp,
+          is_imported: res.extracted_fields.is_imported ?? prev.is_imported,
+          country_of_origin: res.extracted_fields.country_of_origin || prev.country_of_origin,
+          pdp_width_cm: res.extracted_fields.pdp_width_cm || prev.pdp_width_cm,
+          pdp_height_cm: res.extracted_fields.pdp_height_cm || prev.pdp_height_cm,
+          pdp_area_cm2: res.extracted_fields.pdp_area_cm2 || prev.pdp_area_cm2,
+          manufacturer_name: res.extracted_fields.manufacturer_name || prev.manufacturer_name
+        }));
+
+        if (res.barcode) {
+          setBarcodeInput(res.barcode);
+        }
+
+        setIsFoundProduct(res.found);
+        setImageAnalysisMessage(res.message || (res.found ? 'Matched catalog product' : 'Extracted packaging details via AI OCR'));
+        if (res.detected_texts) {
+          setImageDetectedTokens(res.detected_texts);
+        }
+      }
+    } catch (err: any) {
+      console.error('Image identification error:', err);
+      setImageAnalysisMessage('Could not analyze image via AI OCR. Pre-fill details manually.');
+      setIsFoundProduct(false);
+    } finally {
+      setIsAnalyzingImage(false);
+    }
   };
 
   const isFormValid = Boolean(
@@ -325,13 +374,120 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
         )}
 
         {method === 'image' && (
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 px-4 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#174A7E] font-bold rounded-lg text-xs cursor-pointer shadow-2xs transition">
-              <Camera className="w-4 h-4" />
-              <span>Capture / Upload Front Image</span>
-              <input type="file" accept="image/*" onChange={handleImageCapture} className="hidden" />
-            </label>
-            <span className="text-xs text-[#64748B]">System will analyze the package front to identify brand and commodity.</span>
+          <div className="space-y-4">
+            {/* Header info */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-[#1E293B] flex items-center gap-2">
+                  <span>AI Visual Product Identification</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold border border-blue-200">
+                    RapidOCR + Barcode
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#64748B] mt-0.5">
+                  Capture or upload a photo of the package front. AI analyzes packaging text to auto-fill Brand, Commodity, Net Quantity, and MRP.
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <label className="px-4 py-2 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition flex items-center gap-2">
+                  <Camera className="w-3.5 h-3.5" />
+                  <span>Take Photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleImageCapture}
+                    disabled={isAnalyzingImage}
+                    className="hidden"
+                  />
+                </label>
+
+                <label className="px-4 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#174A7E] font-bold rounded-xl text-xs cursor-pointer shadow-2xs transition flex items-center gap-2">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload Image</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageCapture}
+                    disabled={isAnalyzingImage}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Analyzing Loading State */}
+            {isAnalyzingImage && (
+              <div className="p-5 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-center gap-3 text-xs text-[#174A7E] font-bold animate-pulse">
+                <RefreshCw className="w-5 h-5 animate-spin text-[#174A7E]" />
+                <span>Running RapidOCR & Barcode Detection on package front image...</span>
+              </div>
+            )}
+
+            {/* Image Preview & Results Card */}
+            {capturedImagePreview && !isAnalyzingImage && (
+              <div className="p-4 bg-white border border-[#CBD5E1] rounded-xl flex flex-col sm:flex-row items-center gap-4">
+                <div className="relative group w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden border border-[#CBD5E1] bg-slate-100 flex-shrink-0">
+                  <img
+                    src={capturedImagePreview}
+                    alt="Captured Front"
+                    className="w-full h-full object-contain bg-white"
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-black/60 text-white text-[9px] text-center py-0.5 font-bold">
+                    Captured Front
+                  </div>
+                </div>
+
+                <div className="flex-1 space-y-2 text-xs w-full">
+                  {imageAnalysisMessage && (
+                    <div className={`p-2.5 rounded-lg border flex items-center gap-2 font-medium ${
+                      isFoundProduct
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        : 'bg-blue-50 border-blue-200 text-blue-800'
+                    }`}>
+                      {isFoundProduct ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      ) : (
+                        <Sparkles className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      )}
+                      <span>{imageAnalysisMessage}</span>
+                    </div>
+                  )}
+
+                  {imageDetectedTokens && imageDetectedTokens.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="text-[10px] text-[#64748B] font-bold uppercase tracking-wider">
+                        Detected Text on Package:
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {imageDetectedTokens.slice(0, 6).map((tok, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2 py-0.5 bg-[#F1F5F9] text-[#334155] border border-[#E2E8F0] rounded-md text-[10px] font-mono"
+                          >
+                            {tok}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <label className="px-3.5 py-1.5 text-xs font-semibold text-[#64748B] hover:text-[#174A7E] hover:bg-[#F8FAFC] border border-[#CBD5E1] rounded-lg cursor-pointer transition flex items-center gap-1.5 flex-shrink-0">
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Change Photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageCapture}
+                    disabled={isAnalyzingImage}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            )}
           </div>
         )}
 

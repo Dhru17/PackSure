@@ -1,6 +1,12 @@
-﻿from flask import Blueprint, request, jsonify
+import os
+import uuid
+import re
+import cv2
+from flask import Blueprint, request, jsonify
+from config import Config
 from models import db, Product, Manufacturer, ProductCategory, InspectionCase
 from services.auth_service import require_auth
+from services.ocr_service import OCRService
 
 products_bp = Blueprint("products_bp", __name__, url_prefix="/api/products")
 
@@ -107,3 +113,162 @@ def create_product():
     db.session.add(product)
     db.session.commit()
     return jsonify({"product": product.to_dict()}), 201
+
+@products_bp.route("/identify-image", methods=["POST"])
+@require_auth
+def identify_product_image():
+    """
+    Analyzes an uploaded product image using Barcode Detection and RapidOCR / PaddleOCR.
+    Identifies the brand, commodity name, net quantity, and MRP, and matches with catalog.
+    """
+    if "file" not in request.files or not request.files["file"].filename:
+        return jsonify({"error": "No image file uploaded."}), 400
+
+    f = request.files["file"]
+    ext = os.path.splitext(f.filename)[1].lower() or ".jpg"
+    unique_name = f"ident_{uuid.uuid4().hex[:8]}{ext}"
+    save_path = os.path.join(Config.UPLOAD_FOLDER, unique_name)
+    f.save(save_path)
+    file_url = f"/api/media/uploads/{unique_name}"
+
+    # 1. Barcode Detection via OpenCV
+    detected_barcode = None
+    try:
+        img = cv2.imread(save_path)
+        if img is not None:
+            bd = cv2.barcode.BarcodeDetector()
+            ret = bd.detectAndDecode(img)
+            if isinstance(ret, tuple) and len(ret) >= 2:
+                ok = ret[0]
+                decoded_info = ret[1]
+                if ok and decoded_info:
+                    for b_text in decoded_info:
+                        if b_text and len(b_text.strip()) >= 8:
+                            detected_barcode = b_text.strip()
+                            break
+    except Exception as e:
+        print(f"Barcode detection error on {save_path}: {e}")
+
+    # If barcode found, check if it matches a catalog product
+    if detected_barcode:
+        catalog_prod = Product.query.filter_by(barcode=detected_barcode).first()
+        if catalog_prod:
+            return jsonify({
+                "found": True,
+                "method": "BARCODE_MATCH",
+                "barcode": detected_barcode,
+                "product": catalog_prod.to_dict(),
+                "extracted_fields": {
+                    "brand_name": catalog_prod.brand_name,
+                    "commodity_name": catalog_prod.commodity_name,
+                    "category_name": catalog_prod.category.name if catalog_prod.category else "General Packaged Commodity",
+                    "package_type": catalog_prod.package_type or "BOX",
+                    "default_net_quantity": catalog_prod.default_net_quantity or "",
+                    "default_mrp": catalog_prod.default_mrp or 0,
+                    "is_imported": catalog_prod.is_imported,
+                    "country_of_origin": catalog_prod.country_of_origin or "India",
+                    "pdp_width_cm": catalog_prod.pdp_width_cm or 10,
+                    "pdp_height_cm": catalog_prod.pdp_height_cm or 10,
+                    "pdp_area_cm2": catalog_prod.pdp_area_cm2 or 100,
+                    "manufacturer_name": catalog_prod.manufacturer.name if catalog_prod.manufacturer else "Registered Manufacturer"
+                },
+                "image_url": file_url,
+                "detected_texts": [f"Barcode: {detected_barcode}"],
+                "message": f"Barcode {detected_barcode} detected! Matched catalog product '{catalog_prod.brand_name}'."
+            })
+
+    # 2. AI OCR Pass: Detect all text on the package front
+    text_blocks = OCRService.scan_single_image(save_path, panel_name="FRONT")
+    extracted_texts = [b["text"].strip() for b in text_blocks if b.get("text")]
+    combined_lower = " ".join(extracted_texts).lower()
+
+    # 3. Match against existing registered catalog products
+    all_products = Product.query.all()
+    matched_product = None
+    
+    # Priority matching: exact or strong substring of brand or commodity
+    for p in all_products:
+        b_name = (p.brand_name or "").lower()
+        c_name = (p.commodity_name or "").lower()
+        if b_name and len(b_name) >= 3 and b_name in combined_lower:
+            matched_product = p
+            break
+        if c_name and len(c_name) >= 4 and c_name in combined_lower:
+            matched_product = p
+            break
+
+    # Parse structured fields from OCR tokens using OCRService matcher
+    structured = OCRService._init_structured_json()
+    OCRService._run_label_value_matcher(text_blocks, structured)
+
+    extracted_brand = structured.get('brand_name', {}).get('value')
+    extracted_commodity = structured.get('generic_commodity_name', {}).get('value') or structured.get('generic_name', {}).get('value')
+    extracted_net_qty = structured.get('net_quantity', {}).get('value')
+    raw_mrp = structured.get('mrp', {}).get('value')
+    extracted_mrp = None
+    if raw_mrp:
+        try:
+            mrp_clean = re.sub(r"[^\d.]", "", raw_mrp)
+            if mrp_clean:
+                extracted_mrp = float(mrp_clean)
+        except Exception:
+            pass
+
+    # Heuristic for Brand & Commodity if not caught by structured matcher
+    if not extracted_brand and extracted_texts:
+        filtered = [t for t in extracted_texts if not any(w in t.lower() for w in ['pass', 'fail', 'review', 'licence', 'fssai', 'net', 'mrp', 'batch'])]
+        if filtered:
+            extracted_brand = filtered[0]
+            if not extracted_commodity and len(filtered) > 1:
+                extracted_commodity = filtered[1]
+
+    if matched_product:
+        p_dict = matched_product.to_dict()
+        return jsonify({
+            "found": True,
+            "method": "CATALOG_OCR_MATCH",
+            "barcode": matched_product.barcode or detected_barcode,
+            "product": p_dict,
+            "extracted_fields": {
+                "brand_name": matched_product.brand_name,
+                "commodity_name": matched_product.commodity_name,
+                "category_name": matched_product.category.name if matched_product.category else "General Packaged Commodity",
+                "package_type": matched_product.package_type or "BOX",
+                "default_net_quantity": extracted_net_qty or matched_product.default_net_quantity or "",
+                "default_mrp": extracted_mrp or matched_product.default_mrp or 0,
+                "is_imported": matched_product.is_imported,
+                "country_of_origin": matched_product.country_of_origin or "India",
+                "pdp_width_cm": matched_product.pdp_width_cm or 10,
+                "pdp_height_cm": matched_product.pdp_height_cm or 10,
+                "pdp_area_cm2": matched_product.pdp_area_cm2 or 100,
+                "manufacturer_name": matched_product.manufacturer.name if matched_product.manufacturer else "Registered Manufacturer"
+            },
+            "image_url": file_url,
+            "detected_texts": extracted_texts[:8],
+            "message": f"AI recognized '{matched_product.brand_name}' ({matched_product.commodity_name}) from package text!"
+        })
+
+    # If new product not yet registered in catalog: return extracted OCR fields
+    return jsonify({
+        "found": False,
+        "method": "AI_OCR_EXTRACTION",
+        "barcode": detected_barcode,
+        "product": None,
+        "extracted_fields": {
+            "brand_name": extracted_brand or "Identified Commodity",
+            "commodity_name": extracted_commodity or (extracted_texts[0] if extracted_texts else "Packaged Commodity"),
+            "category_name": "General Packaged Commodity",
+            "package_type": "BOX",
+            "default_net_quantity": extracted_net_qty or "",
+            "default_mrp": extracted_mrp or 0,
+            "is_imported": False,
+            "country_of_origin": "India",
+            "pdp_width_cm": 10,
+            "pdp_height_cm": 10,
+            "pdp_area_cm2": 100,
+            "manufacturer_name": "Registered Manufacturer"
+        },
+        "image_url": file_url,
+        "detected_texts": extracted_texts[:8],
+        "message": f"AI extracted text from package. Pre-filled details below for your verification."
+    })
