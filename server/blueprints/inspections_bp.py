@@ -614,6 +614,19 @@ def upload_evidence(case_id):
     }
     verdict = q_verdict_map.get(quality.get("readability_status"), QualityVerdict.READABLE)
 
+    # Replace any existing evidence for this surface panel on this case
+    existing_evs = PackageEvidence.query.filter_by(case_id=case.id, surface_type=surface_type).all()
+    for old_ev in existing_evs:
+        old_fname = os.path.basename(old_ev.storage_path)
+        old_disk_path = os.path.join(Config.UPLOAD_FOLDER, old_fname)
+        if os.path.exists(old_disk_path):
+            try:
+                os.remove(old_disk_path)
+            except Exception:
+                pass
+        db.session.delete(old_ev)
+    db.session.flush()
+
     evidence = PackageEvidence(
         case_id=case.id,
         surface_type=surface_type,
@@ -939,11 +952,14 @@ def run_analysis(case_id):
         item = structured.get(k, {})
         val = item.get('value')
         if val:
-            source_panel = item.get('source_image') or item.get('image_source') or "FRONT"
-            matching_ev = next(
-                (e for e in evidences if e.surface_type.value.upper() in str(source_panel).upper() or str(source_panel).upper() in e.surface_type.value.upper()),
-                evidences[0]
-            )
+            ev_id = item.get("evidence_id")
+            matching_ev = next((e for e in evidences if e.id == ev_id), None) if ev_id else None
+            if not matching_ev:
+                source_panel = item.get('source_image') or item.get('image_source') or "FRONT"
+                matching_ev = next(
+                    (e for e in evidences if e.surface_type.value.upper() in str(source_panel).upper() or str(source_panel).upper() in e.surface_type.value.upper()),
+                    evidences[0]
+                )
             bbox = item.get('bounding_box') or {}
             decl = Declaration(
                 case_id=case.id,
@@ -984,19 +1000,24 @@ def run_analysis(case_id):
         if not rule:
             rule = RegulatoryRule.query.first() # fallback default
 
-        source_str = str(ed.get("source_image") or ed.get("panel_name") or ed.get("source_panel") or ed.get("image_source") or "").upper()
         matching_ev = None
-        for ev in evidences:
-            st = ev.surface_type.value.upper()
-            if st in source_str or source_str in st:
-                matching_ev = ev
-                break
+        ev_id = ed.get("evidence_id")
+        if ev_id:
+            matching_ev = next((e for e in evidences if e.id == ev_id), None)
 
         extracted_v = ed.get("extracted_value")
         if not matching_ev and extracted_v:
             matching_decl = Declaration.query.filter_by(case_id=case.id, extracted_value=str(extracted_v)).first()
             if matching_decl and matching_decl.evidence_id:
                 matching_ev = next((e for e in evidences if e.id == matching_decl.evidence_id), None)
+
+        if not matching_ev:
+            source_str = str(ed.get("source_image") or ed.get("panel_name") or ed.get("source_panel") or ed.get("image_source") or "").upper()
+            for ev in evidences:
+                st = ev.surface_type.value.upper()
+                if st in source_str or source_str in st:
+                    matching_ev = ev
+                    break
 
         if not matching_ev:
             matching_ev = evidences[0]

@@ -190,6 +190,7 @@ class LegalMetrologyRuleEngine:
             'confidence': conf,
             'source_image': source,
             'panel_name': source,
+            'evidence_id': name_data.get('evidence_id') or addr_data.get('evidence_id'),
             'bbox': bbox,
             'why_decision': reason,
             'remarks': remarks
@@ -245,6 +246,7 @@ class LegalMetrologyRuleEngine:
             'confidence': conf,
             'source_image': source,
             'panel_name': source,
+            'evidence_id': comm_data.get('evidence_id'),
             'bbox': bbox,
             'why_decision': reason,
             'remarks': remarks
@@ -322,6 +324,7 @@ class LegalMetrologyRuleEngine:
             'confidence': conf,
             'source_image': source,
             'panel_name': source,
+            'evidence_id': qty_data.get('evidence_id') or unit_data.get('evidence_id'),
             'bbox': bbox,
             'why_decision': reason,
             'remarks': remarks
@@ -375,6 +378,7 @@ class LegalMetrologyRuleEngine:
             'confidence': conf,
             'source_image': source,
             'panel_name': source,
+            'evidence_id': date_data.get('evidence_id'),
             'bbox': bbox,
             'why_decision': reason,
             'remarks': remarks
@@ -448,6 +452,7 @@ class LegalMetrologyRuleEngine:
             'confidence': conf,
             'source_image': source,
             'panel_name': source,
+            'evidence_id': mrp_data.get('evidence_id'),
             'bbox': bbox,
             'why_decision': reason,
             'remarks': remarks
@@ -516,6 +521,7 @@ class LegalMetrologyRuleEngine:
             'confidence': conf,
             'source_image': source,
             'panel_name': source,
+            'evidence_id': phone_data.get('evidence_id') or email_data.get('evidence_id') or care_data.get('evidence_id'),
             'bbox': bbox,
             'why_decision': reason,
             'remarks': remarks
@@ -574,6 +580,7 @@ class LegalMetrologyRuleEngine:
             'confidence': conf,
             'source_image': source,
             'panel_name': source,
+            'evidence_id': data.get('evidence_id'),
             'bbox': bbox,
             'why_decision': reason,
             'remarks': remarks
@@ -643,6 +650,7 @@ class LegalMetrologyRuleEngine:
             'confidence': conf,
             'source_image': source,
             'panel_name': source,
+            'evidence_id': data.get('evidence_id'),
             'bbox': bbox,
             'why_decision': reason,
             'remarks': remarks

@@ -39,7 +39,7 @@ class OCRService:
     """
 
     @classmethod
-    def scan_single_image(cls, image_path, panel_name='Main Face'):
+    def scan_single_image(cls, image_path, panel_name='Main Face', evidence_id=None):
         """
         Runs OpenCV Preprocessing + PP-OCRv4 detection & recognition on a single image.
         Returns a list of detected text blocks with normalized coordinates and confidence.
@@ -105,7 +105,8 @@ class OCRService:
                 'w': round(w_px / img_w, 4),
                 'h': round(h_px / img_h, 4),
                 'pixel_box': [int(min_x), int(min_y), int(w_px), int(h_px)],
-                'polygon': [[round(p[0]/img_w, 4), round(p[1]/img_h, 4)] for p in pts]
+                'polygon': [[round(p[0]/img_w, 4), round(p[1]/img_h, 4)] for p in pts],
+                'evidence_id': evidence_id
             }
 
             blocks.append({
@@ -113,18 +114,22 @@ class OCRService:
                 'confidence': round(score, 4),
                 'bbox': norm_bbox,
                 'panel_name': panel_name,
-                'image_path': image_path
+                'image_path': image_path,
+                'evidence_id': evidence_id
             })
 
         # STEP 8: Barcode detection via pyzbar and OpenCV BarcodeDetector
         barcodes = VisionAnalyzer.detect_barcodes_robust(image_path, panel_name=panel_name)
         for bc in barcodes:
+            bc_bbox = dict(bc.get('bounding_box') or {})
+            bc_bbox['evidence_id'] = evidence_id
             blocks.append({
                 'text': f"BARCODE: {bc['barcode_number']} ({bc['barcode_type']})",
                 'confidence': bc['confidence'],
-                'bbox': bc['bounding_box'],
+                'bbox': bc_bbox,
                 'panel_name': panel_name,
                 'image_path': image_path,
+                'evidence_id': evidence_id,
                 'is_barcode': True,
                 'barcode_number': bc['barcode_number'],
                 'barcode_type': bc['barcode_type']
@@ -148,9 +153,10 @@ class OCRService:
         for panel in panel_images:
             p_name = panel.get('panel_name', 'Main Face')
             img_path = panel.get('image_path')
+            ev_id = panel.get('evidence_id')
             if img_path and os.path.exists(img_path):
                 panels_scanned += 1
-                panel_blocks = cls.scan_single_image(img_path, panel_name=p_name)
+                panel_blocks = cls.scan_single_image(img_path, panel_name=p_name, evidence_id=ev_id)
                 all_blocks.extend(panel_blocks)
 
         ocr_success = len(all_blocks) > 0
@@ -204,6 +210,7 @@ class OCRService:
                 'confidence': 0.0,
                 'source_image': None,
                 'image_source': None,
+                'evidence_id': None,
                 'bounding_box': {'x': 0.0, 'y': 0.0, 'w': 0.0, 'h': 0.0},
                 'raw_ocr_text': '',
                 'raw_text': ''
@@ -211,17 +218,20 @@ class OCRService:
         return result
 
     @classmethod
-    def _set_field(cls, structured, field_name, value, confidence, image_source, bbox, raw_text):
+    def _set_field(cls, structured, field_name, value, confidence, image_source, bbox, raw_text, evidence_id=None):
         """Sets field value ensuring both new and backward-compatible keys are populated."""
         if not value:
             return
         val_str = str(value).strip()
+        if evidence_id is None and isinstance(bbox, dict):
+            evidence_id = bbox.get('evidence_id')
         record = {
             'value': val_str,
             'extracted_value': val_str,
             'confidence': round(float(confidence), 4),
             'source_image': image_source,
             'image_source': image_source,
+            'evidence_id': evidence_id,
             'bounding_box': bbox,
             'raw_ocr_text': raw_text.strip(),
             'raw_text': raw_text.strip()
@@ -234,13 +244,15 @@ class OCRService:
             structured['generic_commodity_name'] = record
 
     @classmethod
-    def _update_field_if_better(cls, structured, field_name, value, confidence, image_source, bbox, raw_text):
+    def _update_field_if_better(cls, structured, field_name, value, confidence, image_source, bbox, raw_text, evidence_id=None):
         """Updates a field if the candidate has higher OCR confidence or current is empty."""
         current = structured.get(field_name, {})
         curr_conf = current.get('confidence', 0.0)
         curr_val = current.get('value') or current.get('extracted_value')
+        if evidence_id is None and isinstance(bbox, dict):
+            evidence_id = bbox.get('evidence_id')
         if value and (confidence > curr_conf or not curr_val):
-            cls._set_field(structured, field_name, value, confidence, image_source, bbox, raw_text)
+            cls._set_field(structured, field_name, value, confidence, image_source, bbox, raw_text, evidence_id=evidence_id)
 
     # -------------------------------------------------------------
     # STEP 5 — LABEL-VALUE MATCHER (CRITICAL ENGINE)
