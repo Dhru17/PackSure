@@ -7,9 +7,11 @@ from models import (
     db, InspectionCase, Declaration, InspectorReview, SeniorReview,
     AuditLog, CaseStatus, InspectorReviewAction, SeniorReviewAction,
     FinalDisposition, AuditActionType, Violation, Product, Manufacturer,
-    VerificationStatus, DeclarationFieldType
+    VerificationStatus, DeclarationFieldType, SystemicPattern, PatternStatus,
+    Plant, User, PackageEvidence, SurfaceType
 )
-from services.auth_service import require_auth, require_role
+from services.auth_service import require_auth, require_role, check_case_access
+from services.systemic_intelligence_service import SystemicIntelligenceService
 
 reviews_bp = Blueprint("reviews_bp", __name__, url_prefix="/api/reviews")
 
@@ -28,10 +30,23 @@ def get_senior_overview():
 
     returned_count = InspectionCase.query.filter_by(status=CaseStatus.RETURNED).count()
 
+    scheduled_count = InspectionCase.query.filter(
+        InspectionCase.status.in_([CaseStatus.DRAFT, CaseStatus.EVIDENCE_PENDING]),
+        InspectionCase.scheduled_date.isnot(None)
+    ).count()
+
+    active_in_field_count = InspectionCase.query.filter(
+        InspectionCase.status.in_([CaseStatus.ANALYZING, CaseStatus.ANALYSIS_COMPLETE, CaseStatus.INSPECTOR_REVIEW])
+    ).count()
+
     today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     today_finalized_count = InspectionCase.query.filter(
         InspectionCase.status == CaseStatus.FINALIZED,
         InspectionCase.finalized_at >= today_start
+    ).count()
+
+    systemic_patterns_count = SystemicPattern.query.filter(
+        SystemicPattern.status.in_([PatternStatus.NEW, PatternStatus.UNDER_REVIEW, PatternStatus.CONFIRMED_PATTERN])
     ).count()
 
     compliant_count = InspectionCase.query.filter_by(final_decision=FinalDisposition.COMPLIANT).count()
@@ -44,7 +59,7 @@ def get_senior_overview():
     ).order_by(InspectionCase.submitted_at.desc(), InspectionCase.created_at.desc()).limit(5).all()
 
     # Recent Senior Decisions
-    recent_reviews = SeniorReview.query.order_by(SeniorReview.created_at.desc()).limit(5).all()
+    recent_reviews = SeniorReview.query.order_by(SeniorReview.created_at.desc()).limit(6).all()
     decisions_list = []
     for sr in recent_reviews:
         c = sr.inspection_case
@@ -60,12 +75,18 @@ def get_senior_overview():
             "timestamp": sr.created_at.isoformat() if sr.created_at else None
         })
 
+    # Recent Systemic Patterns Preview
+    patterns = SystemicIntelligenceService.analyze_and_sync_patterns()[:3]
+
     return jsonify({
         "workload": {
             "pending_adjudications": pending_count,
             "high_priority_cases": high_priority_count,
             "returned_cases": returned_count,
-            "today_finalized": today_finalized_count
+            "scheduled_audits": scheduled_count,
+            "active_in_field": active_in_field_count,
+            "today_finalized": today_finalized_count,
+            "systemic_patterns": systemic_patterns_count
         },
         "compliance": {
             "compliant": compliant_count,
@@ -83,7 +104,8 @@ def get_senior_overview():
                 "submitted_at": c.submitted_at.isoformat() if c.submitted_at else c.created_at.isoformat()
             } for c in recent_submissions
         ],
-        "recent_decisions": decisions_list
+        "recent_decisions": decisions_list,
+        "recent_patterns": patterns
     })
 
 @reviews_bp.route("/queue", methods=["GET"])
@@ -156,13 +178,11 @@ def get_product_history(product_id):
     if not prod:
         return jsonify({"error": "Product not found."}), 404
 
-    # Previous inspections for this exact product
     prod_inspections = InspectionCase.query.filter(
         InspectionCase.product_id == prod.id,
         InspectionCase.status == CaseStatus.FINALIZED
     ).order_by(InspectionCase.finalized_at.desc()).limit(10).all()
 
-    # Manufacturer-level history
     mfg_history = []
     mfg_total_inspections = 0
     mfg_total_violations = 0
@@ -224,15 +244,33 @@ def get_product_history(product_id):
 @reviews_bp.route("/<int:case_id>/inspector", methods=["POST"])
 @require_auth
 def inspector_submit(case_id):
-    case = InspectionCase.query.get_or_404(case_id)
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    # Strict Inspector Case Ownership & Status Check
+    err_resp, err_code = check_case_access(case, g.current_user, for_mutation=True)
+    if err_resp:
+        return err_resp, err_code
+        
     if case.status in [CaseStatus.DRAFT, CaseStatus.EVIDENCE_PENDING, CaseStatus.ANALYZING]:
         return jsonify({"error": "Cannot submit inspector review before AI extraction & analysis is completed."}), 400
+
+    # Mandatory Package Evidence Check (Both Front and Back must exist)
+    evidences = PackageEvidence.query.filter_by(case_id=case.id).all()
+    surfaces = [e.surface_type.value.upper() for e in evidences if e.surface_type]
+    has_front = any("FRONT" in s for s in surfaces)
+    has_back = any("BACK" in s for s in surfaces)
+    if not (has_front and has_back):
+        return jsonify({
+            "error": "Compulsory packaging evidence missing. Both Front Face and Back Face package images are mandatory before submitting to Senior Officer."
+        }), 400
 
     data = request.get_json() or {}
     remarks = data.get("remarks", "")
     corrections = data.get("corrections", {})
+    signature_hash = data.get("signature_hash", "") or f"SIG-{g.current_user.id}-{int(datetime.now(timezone.utc).timestamp())}"
 
-    # Apply inspector corrections without overwriting raw extracted values
     for key, corr_val in corrections.items():
         decl = None
         if str(key).isdigit():
@@ -255,7 +293,9 @@ def inspector_submit(case_id):
     prev_status = case.status.value
     case.status = CaseStatus.SUBMITTED
     case.inspector_remarks = remarks
-    case.submitted_at = datetime.now(timezone.utc)
+    case.signed_by_name = data.get("signed_by_name") or g.current_user.full_name
+    case.signed_at = datetime.now(timezone.utc)
+    case.digital_signature_hash = signature_hash
 
     insp_rev = InspectorReview(
         case_id=case.id,
@@ -266,31 +306,43 @@ def inspector_submit(case_id):
     )
     db.session.add(insp_rev)
 
-    # Audit Log
     audit = AuditLog(
         case_id=case.id,
         user_id=g.current_user.id,
         action_type=AuditActionType.INSPECTOR_SUBMITTED,
         entity_name="InspectionCase",
         entity_id=str(case.id),
-        previous_state_json=json.dumps({"status": prev_status}),
-        new_state_json=json.dumps({"status": case.status.value, "corrections": corrections}),
-        justification=remarks or "Inspector verified declarations and submitted for review."
+        previous_state_json=json.dumps({"status": prev_status, "cycle": case.review_cycle}),
+        new_state_json=json.dumps({
+            "status": case.status.value,
+            "corrections": corrections,
+            "cycle": case.review_cycle,
+            "signed_by": case.signed_by_name,
+            "signature_hash": case.digital_signature_hash
+        }),
+        justification=remarks or f"Inspector {g.current_user.full_name} verified declarations, digitally signed report, and submitted for supervisory review."
     )
     db.session.add(audit)
     db.session.commit()
 
     return jsonify({
-        "message": "Inspector review submitted to senior queue.",
+        "message": f"Inspection #{case.case_number} digitally signed and submitted to senior review queue.",
         "case_id": case.id,
-        "status": case.status.value
+        "status": case.status.value,
+        "review_cycle": case.review_cycle,
+        "signed_by": case.signed_by_name,
+        "signed_at": case.signed_at.isoformat() if case.signed_at else None,
+        "case": case.to_dict()
     })
 
 @reviews_bp.route("/<int:case_id>/violations/<int:violation_id>/action", methods=["POST"])
 @require_role(["SENIOR_OFFICER", "ADMIN"])
 def itemized_violation_action(case_id, violation_id):
     """Senior Officer itemized review of an individual violation."""
-    case = InspectionCase.query.get_or_404(case_id)
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Case not found."}), 404
+        
     viol = Violation.query.filter_by(id=violation_id, case_id=case.id).first_or_404()
 
     data = request.get_json() or {}
@@ -326,18 +378,81 @@ def itemized_violation_action(case_id, violation_id):
         "violation": viol.to_dict()
     })
 
+@reviews_bp.route("/<int:case_id>/return", methods=["POST"])
+@require_role(["SENIOR_OFFICER", "ADMIN"])
+def return_for_reinspection(case_id):
+    """
+    Returns an inspection case to the inspector for correction/re-inspection.
+    Requires mandatory non-empty return reason. Increments review cycle.
+    """
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    data = request.get_json() or {}
+    return_reason = (data.get("reason") or data.get("remarks") or "").strip()
+    statutory_citation = (data.get("statutory_citation") or "").strip()
+
+    if not return_reason:
+        return jsonify({"error": "A mandatory, non-empty return reason must be provided to return a case for re-inspection."}), 400
+
+    prev_status = case.status.value
+    prev_cycle = case.review_cycle or 1
+
+    case.status = CaseStatus.RETURNED
+    case.final_decision = FinalDisposition.REQUIRES_FURTHER_INSPECTION
+    case.senior_reviewer_id = g.current_user.id
+    case.senior_remarks = return_reason
+    case.review_cycle = prev_cycle + 1
+
+    sr_rev = SeniorReview(
+        case_id=case.id,
+        senior_officer_id=g.current_user.id,
+        action=SeniorReviewAction.RETURN_FOR_REINSPECTION,
+        override_reason=return_reason,
+        statutory_justification=statutory_citation,
+        remarks=f"[Cycle {prev_cycle} Return]: {return_reason}"
+    )
+    db.session.add(sr_rev)
+
+    audit = AuditLog(
+        case_id=case.id,
+        user_id=g.current_user.id,
+        action_type=AuditActionType.SENIOR_OVERRIDE,
+        entity_name="InspectionCase",
+        entity_id=str(case.id),
+        previous_state_json=json.dumps({"status": prev_status, "cycle": prev_cycle}),
+        new_state_json=json.dumps({"status": case.status.value, "cycle": case.review_cycle, "return_reason": return_reason}),
+        justification=f"Returned for correction: {return_reason}"
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({
+        "message": f"Case #{case.case_number} successfully returned to inspector for re-inspection.",
+        "case_id": case.id,
+        "status": case.status.value,
+        "review_cycle": case.review_cycle,
+        "final_decision": case.final_decision.value,
+        "case": case.to_dict()
+    })
+
+@reviews_bp.route("/<int:case_id>/finalize", methods=["POST"])
 @reviews_bp.route("/<int:case_id>/senior-action", methods=["POST"])
 @require_role(["SENIOR_OFFICER", "ADMIN"])
 def senior_officer_action(case_id):
-    case = InspectionCase.query.get_or_404(case_id)
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
     if case.status in [CaseStatus.DRAFT, CaseStatus.EVIDENCE_PENDING, CaseStatus.ANALYZING]:
         return jsonify({"error": "Cannot adjudicate or finalize a case that is still in DRAFT/ANALYZING state."}), 400
 
     data = request.get_json() or {}
     action_str = data.get("action", "").upper()
-    override_reason = data.get("override_reason", "")
-    statutory_just = data.get("statutory_justification", "")
-    remarks = data.get("remarks", "")
+    override_reason = (data.get("override_reason") or "").strip()
+    statutory_just = (data.get("statutory_justification") or "").strip()
+    remarks = (data.get("remarks") or "").strip()
     violation_id = data.get("violation_id")
 
     prev_status = case.status.value
@@ -353,23 +468,27 @@ def senior_officer_action(case_id):
     # Handle case-level finalization actions
     senior_action = SeniorReviewAction.APPROVE_FINAL
     audit_action = AuditActionType.CASE_FINALIZED
-    if action_str == "APPROVE_COMPLIANT":
+
+    if action_str in ["APPROVE_COMPLIANT", "COMPLIANT"]:
         senior_action = SeniorReviewAction.OVERRIDE_FINDING if (override_reason or case.failed_checks > 0) else SeniorReviewAction.APPROVE_FINAL
         if senior_action == SeniorReviewAction.OVERRIDE_FINDING:
             audit_action = AuditActionType.SENIOR_OVERRIDE
         case.status = CaseStatus.FINALIZED
         case.final_decision = FinalDisposition.COMPLIANT
         case.finalized_at = datetime.now(timezone.utc)
-    elif action_str == "APPROVE_VIOLATIONS":
+    elif action_str in ["APPROVE_VIOLATIONS", "NON_COMPLIANT"]:
         senior_action = SeniorReviewAction.APPROVE_FINAL
         case.status = CaseStatus.FINALIZED
         case.final_decision = FinalDisposition.NON_COMPLIANT
         case.finalized_at = datetime.now(timezone.utc)
     elif action_str == "RETURN_FOR_REINSPECTION":
+        if not (remarks or override_reason):
+            return jsonify({"error": "A return reason is mandatory when returning for re-inspection."}), 400
         senior_action = SeniorReviewAction.RETURN_FOR_REINSPECTION
         audit_action = AuditActionType.SENIOR_OVERRIDE
         case.status = CaseStatus.RETURNED
         case.final_decision = FinalDisposition.REQUIRES_FURTHER_INSPECTION
+        case.review_cycle = (case.review_cycle or 1) + 1
     elif action_str == "DISMISS_CASE":
         senior_action = SeniorReviewAction.OVERRIDE_FINDING
         audit_action = AuditActionType.SENIOR_OVERRIDE
@@ -380,7 +499,7 @@ def senior_officer_action(case_id):
         return jsonify({"error": f"Invalid action: {action_str}"}), 400
 
     case.senior_reviewer_id = g.current_user.id
-    case.senior_remarks = remarks
+    case.senior_remarks = remarks or override_reason
 
     sr_rev = SeniorReview(
         case_id=case.id,
@@ -411,9 +530,56 @@ def senior_officer_action(case_id):
     db.session.commit()
 
     return jsonify({
-        "message": f"Senior action [{action_str}] recorded.",
+        "message": f"Senior action [{action_str}] recorded successfully.",
         "case_id": case.id,
         "status": case.status.value,
-        "final_decision": case.final_decision.value if case.final_decision else None
+        "final_decision": case.final_decision.value if case.final_decision else None,
+        "case": case.to_dict()
     })
 
+# ==============================================================================
+# INNOVATION #5: BRAND-WIDE SYSTEMIC VIOLATION INTELLIGENCE ENDPOINTS
+# ==============================================================================
+
+@reviews_bp.route("/intelligence/patterns", methods=["GET"])
+@require_role(["SENIOR_OFFICER", "ADMIN"])
+def get_systemic_patterns():
+    """
+    Returns detected brand-wide / product-line systemic non-compliance patterns.
+    Triggers analytical pattern discovery and returns prioritized list.
+    """
+    status_filter = request.args.get("status")
+    patterns = SystemicIntelligenceService.analyze_and_sync_patterns()
+    if status_filter and status_filter.upper() != "ALL":
+        patterns = [p for p in patterns if p.get("status") == status_filter.upper()]
+    return jsonify({
+        "patterns": patterns,
+        "count": len(patterns)
+    })
+
+@reviews_bp.route("/intelligence/patterns/<int:pattern_id>/action", methods=["POST"])
+@require_role(["SENIOR_OFFICER", "ADMIN"])
+def update_pattern_action(pattern_id):
+    """
+    Allows Senior Officer to review, flag, confirm or dismiss a systemic pattern.
+    """
+    data = request.get_json() or {}
+    status_str = data.get("status", "").upper()
+    notes = data.get("notes", "").strip()
+
+    if not status_str:
+        return jsonify({"error": "Status is required (UNDER_REVIEW, CONFIRMED_PATTERN, DISMISSED)."}), 400
+
+    updated, err = SystemicIntelligenceService.update_pattern_status(
+        pattern_id=pattern_id,
+        status_str=status_str,
+        notes=notes,
+        user_id=g.current_user.id
+    )
+    if err:
+        return jsonify({"error": err}), 400
+
+    return jsonify({
+        "message": f"Systemic pattern #{pattern_id} updated to {status_str}.",
+        "pattern": updated
+    })

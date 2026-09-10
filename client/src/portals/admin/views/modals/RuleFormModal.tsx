@@ -26,11 +26,17 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
     version: 'v1.0',
     title: '',
     description: '',
-    statutory_citation: 'Legal Metrology (Packaged Commodities) Rules, 2011 - Rule 6',
-    source_document: 'Legal Metrology (Packaged Commodities) Rules, 2011 and Amendments',
-    validation_logic_type: 'GENERIC_PRESENCE',
+    statutory_citation: 'Rule 6(1), Legal Metrology (Packaged Commodities) Rules, 2011',
+    government_authority: 'Department of Consumer Affairs, Ministry of Consumer Affairs, Food and Public Distribution, Government of India',
+    notification_reference: '',
+    notification_date: '',
+    amendment_title: '',
+    official_source: 'The Gazette of India: Extraordinary',
+    source_document: 'Legal Metrology (Packaged Commodities) Rules, 2011',
+    validation_logic_type: 'MANDATORY_DECLARATIONS',
     effective_from: new Date().toISOString().split('T')[0],
     effective_to: '',
+    status: 'ACTIVE',
     is_active: true
   });
 
@@ -46,10 +52,16 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
           title: rule.title,
           description: rule.description,
           statutory_citation: rule.statutory_citation,
+          government_authority: rule.government_authority || 'Department of Consumer Affairs, Ministry of Consumer Affairs, Food and Public Distribution, Government of India',
+          notification_reference: '',
+          notification_date: '',
+          amendment_title: '',
+          official_source: rule.official_source || 'The Gazette of India: Extraordinary',
           source_document: rule.source_document,
           validation_logic_type: rule.validation_logic_type,
           effective_from: new Date().toISOString().split('T')[0],
           effective_to: '',
+          status: 'FUTURE_SCHEDULED',
           is_active: true
         });
       } else {
@@ -59,24 +71,36 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
           title: rule.title,
           description: rule.description,
           statutory_citation: rule.statutory_citation,
+          government_authority: rule.government_authority || 'Department of Consumer Affairs, Ministry of Consumer Affairs, Food and Public Distribution, Government of India',
+          notification_reference: rule.notification_reference || '',
+          notification_date: rule.notification_date ? rule.notification_date.split('T')[0] : '',
+          amendment_title: rule.amendment_title || '',
+          official_source: rule.official_source || 'The Gazette of India: Extraordinary',
           source_document: rule.source_document,
           validation_logic_type: rule.validation_logic_type,
           effective_from: rule.effective_from ? rule.effective_from.split('T')[0] : '',
           effective_to: rule.effective_to ? rule.effective_to.split('T')[0] : '',
+          status: rule.status || (rule.is_active ? 'ACTIVE' : 'SUPERSEDED'),
           is_active: rule.is_active
         });
       }
     } else {
       setFormData({
-        rule_code: `FSR-${Math.floor(100 + Math.random() * 900)}`,
+        rule_code: `RULE_${Math.floor(100 + Math.random() * 900)}`,
         version: 'v1.0',
         title: '',
         description: '',
-        statutory_citation: 'Legal Metrology (Packaged Commodities) Rules, 2011 - Rule 6',
-        source_document: 'Legal Metrology (Packaged Commodities) Rules, 2011 and Amendments',
-        validation_logic_type: 'GENERIC_PRESENCE',
+        statutory_citation: 'Rule 6(1), Legal Metrology (Packaged Commodities) Rules, 2011',
+        government_authority: 'Department of Consumer Affairs, Ministry of Consumer Affairs, Food and Public Distribution, Government of India',
+        notification_reference: '',
+        notification_date: '',
+        amendment_title: '',
+        official_source: 'The Gazette of India: Extraordinary',
+        source_document: 'Legal Metrology (Packaged Commodities) Rules, 2011',
+        validation_logic_type: 'MANDATORY_DECLARATIONS',
         effective_from: new Date().toISOString().split('T')[0],
         effective_to: '',
+        status: 'ACTIVE',
         is_active: true
       });
     }
@@ -95,7 +119,7 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/50 backdrop-blur-2xs">
-      <div className="bg-white rounded-2xl max-w-xl w-full border border-[#D8DDE3] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-2xl max-w-2xl w-full border border-[#D8DDE3] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="p-5 border-b border-[#D8DDE3] bg-[#F8FAFC] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
@@ -126,11 +150,11 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
         </div>
 
         {/* Form Content */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
-                Rule Code / Reference <span className="text-[#DC2626]">*</span>
+                Rule Code / Identifier <span className="text-[#DC2626]">*</span>
               </label>
               <input
                 type="text"
@@ -138,7 +162,7 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
                 disabled={isEdit || isNewVersionMode}
                 value={formData.rule_code}
                 onChange={(e) => setFormData({ ...formData, rule_code: e.target.value })}
-                placeholder="e.g. FSR-001"
+                placeholder="e.g. RULE_6_1_E"
                 className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs font-mono text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none disabled:bg-[#F1F5F9]"
               />
             </div>
@@ -152,7 +176,7 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
                 required
                 value={formData.version}
                 onChange={(e) => setFormData({ ...formData, version: e.target.value })}
-                placeholder="e.g. v3.0"
+                placeholder="e.g. v2026.1_GSR128E"
                 className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs font-mono text-[#174A7E] font-bold focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
               />
             </div>
@@ -166,52 +190,103 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
                 required
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="e.g. Net Quantity Declaration"
+                placeholder="e.g. Mandatory Declarations on Pre-Packaged Commodities"
                 className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
               />
             </div>
 
             <div className="sm:col-span-2">
               <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
-                Human-Readable Requirement Text
+                Statutory Requirement Text
               </label>
               <textarea
                 rows={3}
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Net quantity must be declared on the principal display panel in prescribed metric units..."
+                placeholder="Every package shall bear legible, definite and conspicuous declarations..."
                 className="w-full p-3 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
               />
             </div>
 
             <div className="sm:col-span-2">
               <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
-                Statutory Citation / Rule Reference
+                Statutory Citation
               </label>
               <input
                 type="text"
                 value={formData.statutory_citation}
                 onChange={(e) => setFormData({ ...formData, statutory_citation: e.target.value })}
-                placeholder="Legal Metrology (Packaged Commodities) Rules, 2011 - Rule 6(1)(d)"
+                placeholder="Rule 6(1), Legal Metrology (Packaged Commodities) Rules, 2011"
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
+                Government Authority
+              </label>
+              <input
+                type="text"
+                value={formData.government_authority}
+                onChange={(e) => setFormData({ ...formData, government_authority: e.target.value })}
+                placeholder="Department of Consumer Affairs, Ministry of Consumer Affairs, Food and Public Distribution, Government of India"
                 className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
               />
             </div>
 
             <div>
               <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
-                Validation Check Type
+                Gazette Notification Reference
+              </label>
+              <input
+                type="text"
+                value={formData.notification_reference}
+                onChange={(e) => setFormData({ ...formData, notification_reference: e.target.value })}
+                placeholder="e.g. G.S.R. 779(E) / G.S.R. 312(E)"
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs font-mono text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
+                Gazette Notification Date
+              </label>
+              <input
+                type="date"
+                value={formData.notification_date}
+                onChange={(e) => setFormData({ ...formData, notification_date: e.target.value })}
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
+                Amendment Title
+              </label>
+              <input
+                type="text"
+                value={formData.amendment_title}
+                onChange={(e) => setFormData({ ...formData, amendment_title: e.target.value })}
+                placeholder="Legal Metrology (Packaged Commodities) Second Amendment Rules, 2026"
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
+                Validation Logic Type
               </label>
               <select
                 value={formData.validation_logic_type}
                 onChange={(e) => setFormData({ ...formData, validation_logic_type: e.target.value })}
                 className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none bg-white"
               >
-                <option value="GENERIC_PRESENCE">Presence & Visibility Check</option>
-                <option value="FONT_SIZE_CALCULATION">Font Height Metric Check (Schedule II)</option>
-                <option value="DATE_VALIDATION">Date Format & Expiry Validity</option>
-                <option value="UNIT_VALIDATION">Standard Metric Units Check</option>
-                <option value="MRP_FORMAT">MRP Inclusive of All Taxes Format</option>
-                <option value="CONSUMER_CARE">Customer Care Contact Check</option>
+                <option value="MANDATORY_DECLARATIONS">Mandatory Declarations (Rule 6)</option>
+                <option value="CHARACTER_HEIGHT">Numeral & Letter Height (Rule 7 / Table I & II)</option>
+                <option value="SURROUNDING_SPACE">PDP Appearance & Surrounding Space (Rule 8)</option>
+                <option value="ECOMMERCE_FILTER">E-Commerce Country of Origin Filter (Rule 6(10A))</option>
+                <option value="DATE_VALIDATION">Date & Shelf-Life Format Verification</option>
+                <option value="UNIT_VALIDATION">SI Metric Unit Validation</option>
               </select>
             </div>
 
@@ -227,6 +302,34 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
               />
             </div>
 
+            <div>
+              <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
+                Effective To Date (Optional)
+              </label>
+              <input
+                type="date"
+                value={formData.effective_to}
+                onChange={(e) => setFormData({ ...formData, effective_to: e.target.value })}
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
+                Legal Enforcement Status
+              </label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none bg-white"
+              >
+                <option value="ACTIVE">ACTIVE (Enforced)</option>
+                <option value="FUTURE_SCHEDULED">FUTURE_SCHEDULED (Upcoming Gazette)</option>
+                <option value="SUPERSEDED">SUPERSEDED (Historical Version)</option>
+                <option value="DEPRECATED">DEPRECATED</option>
+              </select>
+            </div>
+
             <div className="sm:col-span-2 bg-[#F8F9FA] p-3 rounded-xl border border-[#E2E8F0]">
               <label className="flex items-center gap-2.5 cursor-pointer font-semibold text-[#1E293B]">
                 <input
@@ -235,7 +338,7 @@ export const RuleFormModal: React.FC<RuleFormModalProps> = ({
                   onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                   className="rounded text-[#174A7E] focus:ring-[#174A7E]"
                 />
-                <span>Set this rule version as currently Active & Enforced</span>
+                <span>Enable this rule in statutory compliance scans</span>
               </label>
             </div>
           </div>

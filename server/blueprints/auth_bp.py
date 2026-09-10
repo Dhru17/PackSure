@@ -1,4 +1,4 @@
-﻿from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g
 from datetime import datetime, timezone
 from models import db, User, UserRole, AuditLog, AuditActionType
 from services.auth_service import generate_token, require_auth
@@ -59,7 +59,10 @@ def seed_default_users():
         inspector = User(email="inspector@legalmetrology.gov.in", full_name="Inspector Rahul Sharma", role=UserRole.INSPECTOR, badge_number="LMO-DEL-2024-884", jurisdiction_district="Central Delhi")
         inspector.set_password("Inspector#2026")
 
-        db.session.add_all([admin, senior, inspector])
+        company = User(email="compliance@britannia.co.in", full_name="Compliance Officer - Britannia Industries", role=UserRole.COMPANY, phone_number="1800-425-4449")
+        company.set_password("Company#2026")
+
+        db.session.add_all([admin, senior, inspector, company])
         db.session.commit()
-        return jsonify({"message": "Default accounts initialized successfully."})
+        return jsonify({"message": "Default accounts (Admin, Senior, Inspector, Company) initialized successfully."})
     return jsonify({"message": "Users already exist."})

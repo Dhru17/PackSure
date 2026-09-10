@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { InspectionCase, ComplianceCheck } from '../../../../types';
+import { api } from '../../../../services/api';
 import { EvidencePreviewModal } from './EvidencePreviewModal';
 import { 
   CheckCircle2, 
@@ -11,7 +12,8 @@ import {
   Edit3, 
   Check, 
   X,
-  FileCheck2
+  FileCheck2,
+  Scale
 } from 'lucide-react';
 
 interface Step4ComplianceProps {
@@ -41,6 +43,15 @@ export const Step4Compliance: React.FC<Step4ComplianceProps> = ({
   const [decisions, setDecisions] = useState<Record<string, 'CONFIRMED' | 'CORRECTED' | 'DISMISSED'>>({});
   const [activeCorrectionField, setActiveCorrectionField] = useState<string | null>(null);
   const [dismissReasons, setDismissReasons] = useState<Record<string, string>>({});
+
+  // Physical measurements state
+  const [actualNetQty, setActualNetQty] = useState(c.actual_net_quantity || c.product?.default_net_quantity || '');
+  const [fontHeight, setFontHeight] = useState<string | number>(c.actual_font_height_mm || 4.0);
+  const [pdpWidth, setPdpWidth] = useState<string | number>(c.actual_pdp_width_cm || c.product?.pdp_width_cm || 15.0);
+  const [pdpHeight, setPdpHeight] = useState<string | number>(c.actual_pdp_height_cm || c.product?.pdp_height_cm || 10.0);
+  const [measurementMethod, setMeasurementMethod] = useState(c.measurement_method || 'Standard Vernier Caliper & Calibrated Balance');
+  const [calibratedScale, setCalibratedScale] = useState(c.calibrated_scale_used ?? true);
+  const [measurementSaved, setMeasurementSaved] = useState(false);
 
   const checks = c.compliance_checks || [];
   const declarations = c.declarations || [];
@@ -310,6 +321,127 @@ export const Step4Compliance: React.FC<Step4ComplianceProps> = ({
               );
             })
           )}
+        </div>
+      </div>
+
+      {/* Step 4C: Calibrated Physical Measurements (Rule 7, 8 & 9) */}
+      <div className="bg-[#F8FAFC] border border-[#CBD5E1] rounded-xl p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E2E8F0] pb-3">
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E293B] flex items-center gap-2">
+              <Scale className="w-4 h-4 text-[#174A7E]" />
+              <span>Calibrated Physical Measurements & Verification</span>
+            </h3>
+            <p className="text-[11px] text-[#64748B] mt-0.5">
+              Record physical laboratory/field measurements against packaged commodity standards (Rule 7 font height, Rule 8 PDP area).
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await api.saveMeasurements(c.id, {
+                  actual_net_quantity: actualNetQty,
+                  actual_pdp_width_cm: pdpWidth ? Number(pdpWidth) : undefined,
+                  actual_pdp_height_cm: pdpHeight ? Number(pdpHeight) : undefined,
+                  actual_font_height_mm: fontHeight ? Number(fontHeight) : undefined,
+                  measurement_method: measurementMethod,
+                  calibrated_scale_used: calibratedScale
+                });
+                setMeasurementSaved(true);
+                setTimeout(() => setMeasurementSaved(false), 3000);
+              } catch (err: any) {
+                alert(`Failed to save measurements: ${err.message}`);
+              }
+            }}
+            className="px-4 py-1.5 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+          >
+            <Check className="w-3.5 h-3.5" />
+            <span>{measurementSaved ? 'Measurements Saved ✓' : 'Save Measurements'}</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+          <div>
+            <label className="block font-bold text-[#1E293B] mb-1">
+              Actual Net Quantity Measured:
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. 200.5 g / 500 ml"
+              value={actualNetQty}
+              onChange={(e) => setActualNetQty(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:border-[#174A7E]"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-[#1E293B] mb-1">
+              Calibrated Font Height (mm):
+            </label>
+            <input
+              type="number"
+              step="0.1"
+              placeholder="e.g. 4.0"
+              value={fontHeight}
+              onChange={(e) => setFontHeight(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:border-[#174A7E]"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-[#1E293B] mb-1">
+              PDP Width & Height (cm):
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="0.1"
+                placeholder="W"
+                value={pdpWidth}
+                onChange={(e) => setPdpWidth(e.target.value)}
+                className="w-1/2 px-3 py-2 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B]"
+              />
+              <span className="text-[#64748B] font-bold">&times;</span>
+              <input
+                type="number"
+                step="0.1"
+                placeholder="H"
+                value={pdpHeight}
+                onChange={(e) => setPdpHeight(e.target.value)}
+                className="w-1/2 px-3 py-2 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B]"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-[#1E293B] mb-1">
+              Measurement Tool / Method:
+            </label>
+            <select
+              value={measurementMethod}
+              onChange={(e) => setMeasurementMethod(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B]"
+            >
+              <option value="Standard Vernier Caliper & Calibrated Balance">Standard Vernier & Scale</option>
+              <option value="Optical Micrometer & Analytical Balance">Optical Micrometer & Analytical Balance</option>
+              <option value="Steel Rule & Electronic Balance">Steel Rule & Electronic Balance</option>
+              <option value="Visual Direct Inspection">Visual Direct Inspection</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="pt-2 flex items-center gap-2">
+          <label className="flex items-center gap-2 text-xs font-semibold text-[#1E293B] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={calibratedScale}
+              onChange={(e) => setCalibratedScale(e.target.checked)}
+              className="w-4 h-4 text-[#174A7E] rounded"
+            />
+            <span>Official Calibrated Instrument / Scale Verified & Valid Calibration Seal Attached</span>
+          </label>
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-﻿import enum
+import enum
 import json
 from datetime import datetime, timezone
 from . import db
@@ -16,6 +16,13 @@ class AuditActionType(str, enum.Enum):
     CASE_FINALIZED = "CASE_FINALIZED"
     RULE_MODIFIED = "RULE_MODIFIED"
     USER_MODIFIED = "USER_MODIFIED"
+    COMPANY_MODIFIED = "COMPANY_MODIFIED"
+    PLANT_MODIFIED = "PLANT_MODIFIED"
+    JURISDICTION_MODIFIED = "JURISDICTION_MODIFIED"
+    ELIGIBILITY_MODIFIED = "ELIGIBILITY_MODIFIED"
+    REGULATORY_IMPACT_RUN = "REGULATORY_IMPACT_RUN"
+    REPORT_GENERATED = "REPORT_GENERATED"
+    DOCUMENT_MODIFIED = "DOCUMENT_MODIFIED"
 
 class AuditLog(db.Model):
     __tablename__ = "audit_logs"

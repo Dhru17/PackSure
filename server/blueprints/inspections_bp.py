@@ -2,24 +2,387 @@ import os
 import re
 import uuid
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from flask import Blueprint, request, jsonify, g, send_from_directory
 import cv2
 
 from config import Config
 from models import (
     db, InspectionCase, CaseStatus, FinalDisposition,
-    Product, PackageEvidence, OCRDetection, SurfaceType, QualityVerdict,
+    Product, ProductCategory, Manufacturer, Plant, Jurisdiction,
+    PackageEvidence, OCRDetection, SurfaceType, QualityVerdict,
     Declaration, DeclarationFieldType, ExtractionMethod, VerificationStatus,
     RegulatoryRule, ComplianceCheck, Violation, CheckStatus, ViolationSeverity,
-    AuditLog, AuditActionType
+    AuditLog, AuditActionType, User, UserRole,
+    InspectorJurisdictionEligibility, InspectorCategoryEligibility,
+    CompanyDocument, DocumentStatus
 )
-from services.auth_service import require_auth
+from services.auth_service import require_auth, require_role, check_case_access
 from services.vision_analyzer import VisionAnalyzer
 from services.ocr_service import OCRService
 from services.rule_engine import LegalMetrologyRuleEngine
 
 inspections_bp = Blueprint("inspections_bp", __name__, url_prefix="/api/inspections")
+
+@inspections_bp.route("/eligible-inspectors", methods=["GET"])
+@require_auth
+def get_eligible_inspectors():
+    """
+    Returns list of active inspectors with eligibility evaluation,
+    live active caseload, and workload balancing recommendations.
+    """
+    category_id = request.args.get("category_id", type=int)
+    plant_id = request.args.get("plant_id", type=int)
+    jurisdiction_id = request.args.get("jurisdiction_id", type=int)
+
+    if plant_id and not jurisdiction_id:
+        plant = db.session.get(Plant, plant_id)
+        if plant and plant.jurisdiction_id:
+            jurisdiction_id = plant.jurisdiction_id
+
+    inspectors = User.query.filter_by(role=UserRole.INSPECTOR, is_active=True).all()
+    results = []
+
+    for insp in inspectors:
+        # 1. Jurisdiction Match
+        has_jurisdiction_match = True
+        jurisdiction_names = []
+        if jurisdiction_id:
+            elig_jur = InspectorJurisdictionEligibility.query.filter_by(
+                inspector_id=insp.id,
+                jurisdiction_id=jurisdiction_id,
+                is_active=True
+            ).first()
+            # If explicit records exist in the system, enforce match
+            total_jur_records = InspectorJurisdictionEligibility.query.filter_by(inspector_id=insp.id, is_active=True).count()
+            if total_jur_records > 0 and not elig_jur:
+                has_jurisdiction_match = False
+
+        jur_list = InspectorJurisdictionEligibility.query.filter_by(inspector_id=insp.id, is_active=True).all()
+        jurisdiction_names = [j.jurisdiction.name for j in jur_list if j.jurisdiction]
+
+        # 2. Category Match
+        has_category_match = True
+        if category_id:
+            elig_cat = InspectorCategoryEligibility.query.filter_by(
+                inspector_id=insp.id,
+                category_id=category_id,
+                is_active=True
+            ).first()
+            total_cat_records = InspectorCategoryEligibility.query.filter_by(inspector_id=insp.id, is_active=True).count()
+            if total_cat_records > 0 and not elig_cat:
+                has_category_match = False
+
+        # 3. Workload Caseload
+        active_cases_count = InspectionCase.query.filter(
+            InspectionCase.inspector_id == insp.id,
+            InspectionCase.status.in_([
+                CaseStatus.DRAFT, CaseStatus.EVIDENCE_PENDING,
+                CaseStatus.ANALYZING, CaseStatus.ANALYSIS_COMPLETE,
+                CaseStatus.INSPECTOR_REVIEW, CaseStatus.RETURNED
+            ])
+        ).count()
+
+        if active_cases_count <= 2:
+            workload_status = "Optimal"
+            workload_badge = "success"
+            workload_score = 95
+        elif active_cases_count <= 5:
+            workload_status = "Moderate"
+            workload_badge = "warning"
+            workload_score = 75
+        else:
+            workload_status = "High Caseload"
+            workload_badge = "danger"
+            workload_score = 40
+
+        is_eligible = has_jurisdiction_match and has_category_match
+        recommendation_score = workload_score if is_eligible else (workload_score - 50)
+        is_recommended = is_eligible and (active_cases_count <= 4)
+
+        results.append({
+            "inspector_id": insp.id,
+            "full_name": insp.full_name,
+            "email": insp.email,
+            "badge_number": insp.badge_number,
+            "jurisdiction": ", ".join(jurisdiction_names) if jurisdiction_names else "General Division",
+            "active_cases_count": active_cases_count,
+            "workload_status": workload_status,
+            "workload_badge": workload_badge,
+            "has_jurisdiction_match": has_jurisdiction_match,
+            "has_category_match": has_category_match,
+            "is_eligible": is_eligible,
+            "is_recommended": is_recommended,
+            "recommendation_score": recommendation_score
+        })
+
+    # Sort: Recommended first, then highest recommendation score
+    results.sort(key=lambda x: (x["is_recommended"], x["is_eligible"], x["recommendation_score"]), reverse=True)
+
+    return jsonify({
+        "inspectors": results,
+        "count": len(results)
+    })
+
+@inspections_bp.route("/schedule", methods=["POST"])
+@require_role(["SENIOR_OFFICER", "ADMIN"])
+def schedule_audit():
+    """
+    Schedules an official Legal Metrology inspection audit.
+    Enforces strict inspector eligibility, future date validation,
+    and locks in the active regulatory rule version.
+    """
+    data = request.get_json() or {}
+    company_id = data.get("company_id")
+    plant_id = data.get("plant_id")
+    category_id = data.get("category_id")
+    product_id = data.get("product_id")
+    inspector_id = data.get("inspector_id")
+    scheduled_date_str = data.get("scheduled_date")
+    instructions = data.get("instructions", "").strip()
+
+    if not inspector_id:
+        return jsonify({"error": "An assigned inspector is mandatory to schedule an audit."}), 400
+
+    inspector = db.session.get(User, inspector_id)
+    if not inspector or inspector.role != UserRole.INSPECTOR or not inspector.is_active:
+        return jsonify({"error": "Selected user is not an active inspector."}), 400
+
+    # Plant & Strict Eligibility Validation
+    plant = None
+    if plant_id:
+        plant = db.session.get(Plant, plant_id)
+        if not plant:
+            return jsonify({"error": "Specified plant not found."}), 404
+        if plant.jurisdiction_id:
+            # Check jurisdiction eligibility
+            has_jur_elig = InspectorJurisdictionEligibility.query.filter_by(
+                inspector_id=inspector.id,
+                jurisdiction_id=plant.jurisdiction_id,
+                is_active=True
+            ).first()
+            total_jur = InspectorJurisdictionEligibility.query.filter_by(inspector_id=inspector.id, is_active=True).count()
+            if total_jur > 0 and not has_jur_elig:
+                return jsonify({"error": f"Inspector {inspector.full_name} is not authorized for plant jurisdiction [{plant.jurisdiction_rel.name if plant.jurisdiction_rel else 'Assigned Area'}]."}), 400
+
+    # Resolve or create Product
+    prod = None
+    if product_id:
+        prod = db.session.get(Product, product_id)
+    if not prod:
+        brand = data.get("brand_name", "").strip() or "Standard Inspection SKU"
+        comm = data.get("commodity_name", "").strip() or "Packaged Commodity"
+        barcode = data.get("barcode", "").strip() or None
+        
+        prod = Product(
+            manufacturer_id=company_id or (plant.company_id if plant else None),
+            category_id=category_id,
+            brand_name=brand,
+            commodity_name=comm,
+            barcode=barcode,
+            package_type=data.get("package_type", "Rectangular Box"),
+            default_net_quantity=data.get("default_net_quantity", "500 g"),
+            default_mrp=float(data.get("default_mrp")) if data.get("default_mrp") else 100.0,
+            pdp_width_cm=float(data.get("pdp_width_cm")) if data.get("pdp_width_cm") else 12.0,
+            pdp_height_cm=float(data.get("pdp_height_cm")) if data.get("pdp_height_cm") else 18.0
+        )
+        prod.pdp_area_cm2 = round(prod.pdp_width_cm * prod.pdp_height_cm, 1)
+        db.session.add(prod)
+        db.session.flush()
+
+    # Category Eligibility Validation
+    target_category_id = prod.category_id if prod else category_id
+    if target_category_id:
+        has_cat_elig = InspectorCategoryEligibility.query.filter_by(
+            inspector_id=inspector.id,
+            category_id=target_category_id,
+            is_active=True
+        ).first()
+        total_cat_elig = InspectorCategoryEligibility.query.filter_by(
+            inspector_id=inspector.id,
+            is_active=True
+        ).count()
+        if total_cat_elig > 0 and not has_cat_elig:
+            cat_obj = db.session.get(ProductCategory, target_category_id)
+            return jsonify({"error": f"Inspector {inspector.full_name} is not certified/qualified for product category [{cat_obj.name if cat_obj else target_category_id}]."}), 400
+
+    # Parse Scheduled Date
+    scheduled_dt = None
+    if scheduled_date_str:
+        try:
+            scheduled_dt = datetime.fromisoformat(scheduled_date_str.replace("Z", "+00:00"))
+        except Exception:
+            try:
+                scheduled_dt = datetime.strptime(scheduled_date_str, "%Y-%m-%d")
+            except Exception:
+                pass
+
+    # Fetch currently active Regulatory Rule Version (Effective date <= today)
+    today = date.today()
+    active_rule = RegulatoryRule.query.filter(
+        RegulatoryRule.is_active == True,
+        RegulatoryRule.effective_from <= today
+    ).order_by(RegulatoryRule.effective_from.desc()).first()
+    if not active_rule:
+        active_rule = RegulatoryRule.query.filter_by(is_active=True).order_by(RegulatoryRule.effective_from.asc()).first()
+    active_version = active_rule.version if active_rule else "v2026.1_GSR128E"
+
+    case_num = f"LM-2026-{uuid.uuid4().hex[:6].upper()}"
+    case = InspectionCase(
+        case_number=case_num,
+        product_id=prod.id,
+        inspector_id=inspector.id,
+        scheduled_by_id=g.current_user.id,
+        plant_id=plant.id if plant else None,
+        scheduled_date=scheduled_dt or datetime.now(timezone.utc),
+        rule_version=active_version,
+        status=CaseStatus.DRAFT,
+        location_name=plant.name if plant else (data.get("location_name") or "Scheduled Inspection Facility"),
+        inspector_remarks=f"Scheduled by Senior Officer {g.current_user.full_name}. Instructions: {instructions}" if instructions else None,
+        source_type=data.get("source_type", "Scheduled Manufacturing Audit")
+    )
+    db.session.add(case)
+    db.session.flush()
+
+    # Audit Log
+    audit = AuditLog(
+        case_id=case.id,
+        user_id=g.current_user.id,
+        action_type=AuditActionType.CASE_CREATED,
+        entity_name="InspectionCase",
+        entity_id=str(case.id),
+        new_state_json=json.dumps({
+            "case_number": case.case_number,
+            "inspector": inspector.full_name,
+            "plant": plant.name if plant else None,
+            "rule_version": active_version,
+            "scheduled_date": case.scheduled_date.isoformat() if case.scheduled_date else None
+        }),
+        justification=f"Audit scheduled for {prod.brand_name} by Senior Officer {g.current_user.full_name}."
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({
+        "message": f"Audit {case.case_number} successfully scheduled.",
+        "case": case.to_dict()
+    }), 201
+
+@inspections_bp.route("/scheduled", methods=["GET"])
+@require_auth
+def list_scheduled_audits():
+    """
+    Returns upcoming and active scheduled audits for Senior Officer supervision.
+    """
+    search = request.args.get("search", "").strip()
+    status_filter = request.args.get("status", "ALL").upper()
+    
+    query = InspectionCase.query.order_by(InspectionCase.scheduled_date.asc(), InspectionCase.created_at.desc())
+
+    if status_filter == "UPCOMING":
+        query = query.filter(InspectionCase.status.in_([CaseStatus.DRAFT, CaseStatus.EVIDENCE_PENDING]))
+    elif status_filter == "ACTIVE":
+        query = query.filter(InspectionCase.status.in_([CaseStatus.ANALYZING, CaseStatus.ANALYSIS_COMPLETE, CaseStatus.INSPECTOR_REVIEW]))
+    elif status_filter == "ALL":
+        query = query.filter(InspectionCase.status.in_([
+            CaseStatus.DRAFT, CaseStatus.EVIDENCE_PENDING,
+            CaseStatus.ANALYZING, CaseStatus.ANALYSIS_COMPLETE,
+            CaseStatus.INSPECTOR_REVIEW, CaseStatus.RETURNED
+        ]))
+
+    cases = query.all()
+    out = []
+    for c in cases:
+        if search:
+            b_name = (c.product.brand_name.lower()) if c.product else ""
+            c_num = c.case_number.lower()
+            p_name = (c.plant.name.lower()) if c.plant else ""
+            i_name = (c.inspector.full_name.lower()) if c.inspector else ""
+            if not (search.lower() in b_name or search.lower() in c_num or search.lower() in p_name or search.lower() in i_name):
+                continue
+        out.append(c.to_dict())
+
+    return jsonify({
+        "audits": out,
+        "count": len(out)
+    })
+
+@inspections_bp.route("/<int:case_id>/schedule", methods=["PUT"])
+@require_role(["SENIOR_OFFICER", "ADMIN"])
+def update_scheduled_audit(case_id):
+    """
+    Allows Senior Officer to reschedule date or reassign eligible inspector.
+    """
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    if case.status in [CaseStatus.SUBMITTED, CaseStatus.SENIOR_REVIEW, CaseStatus.FINALIZED]:
+        return jsonify({"error": "Cannot reschedule or reassign an audit that is already submitted or finalized."}), 400
+
+    data = request.get_json() or {}
+    new_inspector_id = data.get("inspector_id")
+    new_date_str = data.get("scheduled_date")
+    notes = data.get("instructions", "").strip()
+
+    prev_inspector = case.inspector.full_name if case.inspector else None
+    if new_inspector_id and new_inspector_id != case.inspector_id:
+        insp = db.session.get(User, new_inspector_id)
+        if not insp or insp.role != UserRole.INSPECTOR or not insp.is_active:
+            return jsonify({"error": "Selected user is not an active inspector."}), 400
+
+        # Validate jurisdiction eligibility for plant
+        if case.plant_id and case.plant and case.plant.jurisdiction_id:
+            has_jur = InspectorJurisdictionEligibility.query.filter_by(
+                inspector_id=insp.id,
+                jurisdiction_id=case.plant.jurisdiction_id,
+                is_active=True
+            ).first()
+            total_jur = InspectorJurisdictionEligibility.query.filter_by(inspector_id=insp.id, is_active=True).count()
+            if total_jur > 0 and not has_jur:
+                return jsonify({"error": f"Inspector {insp.full_name} is not authorized for plant jurisdiction."}), 400
+
+        # Validate category eligibility for product
+        if case.product and case.product.category_id:
+            has_cat = InspectorCategoryEligibility.query.filter_by(
+                inspector_id=insp.id,
+                category_id=case.product.category_id,
+                is_active=True
+            ).first()
+            total_cat = InspectorCategoryEligibility.query.filter_by(inspector_id=insp.id, is_active=True).count()
+            if total_cat > 0 and not has_cat:
+                return jsonify({"error": f"Inspector {insp.full_name} is not qualified for product category."}), 400
+
+        case.inspector_id = insp.id
+
+    if new_date_str:
+        try:
+            case.scheduled_date = datetime.fromisoformat(new_date_str.replace("Z", "+00:00"))
+        except Exception:
+            pass
+
+    if notes:
+        case.senior_remarks = notes
+
+    audit = AuditLog(
+        case_id=case.id,
+        user_id=g.current_user.id,
+        action_type=AuditActionType.CHECK_STATUS_CHANGED,
+        entity_name="InspectionCase",
+        entity_id=str(case.id),
+        new_state_json=json.dumps({
+            "inspector_id": case.inspector_id,
+            "scheduled_date": case.scheduled_date.isoformat() if case.scheduled_date else None
+        }),
+        justification=f"Audit updated by Senior Officer {g.current_user.full_name}. Previous inspector: {prev_inspector}."
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({
+        "message": "Scheduled audit updated successfully.",
+        "case": case.to_dict()
+    })
 
 @inspections_bp.route("/overview", methods=["GET"])
 @require_auth
@@ -101,6 +464,13 @@ def list_inspections():
     limit = int(request.args.get("limit", 50))
 
     query = InspectionCase.query.order_by(InspectionCase.created_at.desc())
+
+    # Strict Inspector Role Filtering: Inspectors only see their own assigned audits
+    if g.current_user.role == UserRole.INSPECTOR:
+        query = query.filter(
+            (InspectionCase.inspector_id == g.current_user.id) | (InspectionCase.inspector_id.is_(None))
+        )
+
     if status and status.upper() != "ALL":
         try:
             enum_val = CaseStatus(status.upper())
@@ -185,7 +555,15 @@ def create_inspection():
 @inspections_bp.route("/<int:case_id>", methods=["GET"])
 @require_auth
 def get_inspection(case_id):
-    case = InspectionCase.query.get_or_404(case_id)
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    # Strict Inspector & Supervisor RBAC ownership check
+    err_resp, err_code = check_case_access(case, g.current_user, for_mutation=False)
+    if err_resp:
+        return err_resp, err_code
+
     d = case.to_dict()
     d["evidences"] = [e.to_dict() for e in case.evidences]
     d["declarations"] = [decl.to_dict() for decl in case.declarations]
@@ -200,7 +578,15 @@ def get_inspection(case_id):
 @inspections_bp.route("/<int:case_id>/evidence", methods=["POST"])
 @require_auth
 def upload_evidence(case_id):
-    case = InspectionCase.query.get_or_404(case_id)
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    # Strict RBAC Case Ownership Check
+    err_resp, err_code = check_case_access(case, g.current_user, for_mutation=True)
+    if err_resp:
+        return err_resp, err_code
+
     surface_str = request.form.get("surface_type", "FRONT").upper()
     try:
         surface_type = SurfaceType(surface_str)
@@ -264,10 +650,202 @@ def upload_evidence(case_id):
 
     return jsonify({"evidence": evidence.to_dict(), "quality_analysis": quality}), 201
 
+@inspections_bp.route("/<int:case_id>/evidence/<int:evidence_id>", methods=["DELETE"])
+@require_auth
+def delete_evidence(case_id, evidence_id):
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    err_resp, err_code = check_case_access(case, g.current_user, for_mutation=True)
+    if err_resp:
+        return err_resp, err_code
+
+    ev = PackageEvidence.query.filter_by(id=evidence_id, case_id=case.id).first_or_404()
+    db.session.delete(ev)
+    db.session.commit()
+    return jsonify({"message": f"Evidence #{evidence_id} removed successfully."})
+
+@inspections_bp.route("/<int:case_id>/measurements", methods=["POST"])
+@require_auth
+def save_physical_measurements(case_id):
+    """
+    Saves inspector's actual physical measurements and calibration method.
+    """
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    err_resp, err_code = check_case_access(case, g.current_user, for_mutation=True)
+    if err_resp:
+        return err_resp, err_code
+
+    data = request.get_json() or {}
+    case.actual_net_quantity = data.get("actual_net_quantity")
+    if data.get("actual_pdp_width_cm") is not None:
+        case.actual_pdp_width_cm = float(data["actual_pdp_width_cm"])
+    if data.get("actual_pdp_height_cm") is not None:
+        case.actual_pdp_height_cm = float(data["actual_pdp_height_cm"])
+    if data.get("actual_font_height_mm") is not None:
+        case.actual_font_height_mm = float(data["actual_font_height_mm"])
+    case.measurement_method = data.get("measurement_method", "Calibrated Vernier Scale & Digital Balance")
+    case.calibrated_scale_used = bool(data.get("calibrated_scale_used", True))
+
+    audit = AuditLog(
+        case_id=case.id,
+        user_id=g.current_user.id,
+        action_type=AuditActionType.CHECK_STATUS_CHANGED,
+        entity_name="InspectionCase",
+        entity_id=str(case.id),
+        new_state_json=json.dumps({
+            "actual_net_quantity": case.actual_net_quantity,
+            "actual_font_height_mm": case.actual_font_height_mm,
+            "measurement_method": case.measurement_method
+        }),
+        justification=f"Physical measurements entered by Inspector {g.current_user.full_name}."
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({
+        "message": "Physical measurements recorded successfully.",
+        "case": case.to_dict()
+    })
+
+# ==============================================================================
+# COMPANY DOCUMENT VERIFICATION ENDPOINTS
+# ==============================================================================
+
+@inspections_bp.route("/<int:case_id>/documents", methods=["GET"])
+@require_auth
+def get_case_documents(case_id):
+    """
+    Returns required company and category statutory documents for the audit.
+    """
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    err_resp, err_code = check_case_access(case, g.current_user, for_mutation=False)
+    if err_resp:
+        return err_resp, err_code
+
+    mfg_id = case.product.manufacturer_id if case.product else None
+    cat_id = case.product.category_id if case.product else None
+
+    docs = []
+    if mfg_id:
+        docs = CompanyDocument.query.filter(
+            (CompanyDocument.company_id == mfg_id) | (CompanyDocument.category_id == cat_id)
+        ).all()
+
+    # If no statutory documents uploaded yet, seed standard government inspection certificates
+    if not docs and mfg_id:
+        seed_docs = [
+            CompanyDocument(
+                company_id=mfg_id,
+                category_id=cat_id,
+                document_type="MODEL_APPROVAL_CERTIFICATE",
+                title="Legal Metrology Model Approval Certificate (Section 22)",
+                document_number=f"LM/IND/MA/2025/{case.id}01",
+                file_url="/api/media/uploads/sample_model_approval.pdf",
+                status=DocumentStatus.PENDING_VERIFICATION,
+                notes="Statutory model approval certificate for packaging dimensions and declarations."
+            ),
+            CompanyDocument(
+                company_id=mfg_id,
+                category_id=cat_id,
+                document_type="MANUFACTURING_LICENSE",
+                title="FSSAI / State Manufacturing & Packing License",
+                document_number=f"LIC/DEL/MFG/2024/{case.id}88",
+                file_url="/api/media/uploads/sample_manufacturing_license.pdf",
+                status=DocumentStatus.PENDING_VERIFICATION,
+                notes="Valid state manufacturing license covering registered plant."
+            ),
+            CompanyDocument(
+                company_id=mfg_id,
+                category_id=cat_id,
+                document_type="WEIGHTS_MEASURES_REGISTRATION",
+                title="Director of Legal Metrology Packer Registration (Rule 27)",
+                document_number=f"LM/PC/REG/2023/{case.id}44",
+                file_url="/api/media/uploads/sample_packer_registration.pdf",
+                status=DocumentStatus.PENDING_VERIFICATION,
+                notes="Mandatory pre-market packer registration certificate."
+            )
+        ]
+        db.session.add_all(seed_docs)
+        db.session.commit()
+        docs = seed_docs
+
+    return jsonify({
+        "documents": [d.to_dict() for d in docs],
+        "count": len(docs)
+    })
+
+@inspections_bp.route("/<int:case_id>/documents/<int:doc_id>/verify", methods=["POST"])
+@require_auth
+def verify_case_document(case_id, doc_id):
+    """
+    Inspector verifies or rejects a company document with a mandatory rejection reason.
+    """
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    err_resp, err_code = check_case_access(case, g.current_user, for_mutation=True)
+    if err_resp:
+        return err_resp, err_code
+
+    doc = db.session.get(CompanyDocument, doc_id)
+    if not doc:
+        return jsonify({"error": "Document not found."}), 404
+
+    data = request.get_json() or {}
+    action_str = (data.get("action") or data.get("status") or "").upper() # VERIFIED, REJECTED
+    rejection_reason = data.get("rejection_reason", "").strip()
+
+    if action_str == "REJECTED" and not rejection_reason:
+        return jsonify({"error": "A mandatory, non-empty rejection reason is required to reject a document."}), 400
+
+    if action_str not in ["VERIFIED", "REJECTED"]:
+        return jsonify({"error": "Action must be VERIFIED or REJECTED."}), 400
+
+    prev_status = doc.status.value
+    doc.status = DocumentStatus(action_str)
+    doc.rejection_reason = rejection_reason if action_str == "REJECTED" else None
+    doc.verified_by_id = g.current_user.id
+    doc.verified_at = datetime.now(timezone.utc)
+
+    audit = AuditLog(
+        case_id=case.id,
+        user_id=g.current_user.id,
+        action_type=AuditActionType.CHECK_STATUS_CHANGED,
+        entity_name="CompanyDocument",
+        entity_id=str(doc.id),
+        previous_state_json=json.dumps({"status": prev_status}),
+        new_state_json=json.dumps({"status": doc.status.value, "rejection_reason": doc.rejection_reason}),
+        justification=f"Document '{doc.title}' marked as {action_str} by Inspector {g.current_user.full_name}. Reason: {rejection_reason or 'Document valid'}"
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({
+        "message": f"Document #{doc.id} updated to {action_str}.",
+        "document": doc.to_dict()
+    })
+
 @inspections_bp.route("/<int:case_id>/analyze", methods=["POST"])
 @require_auth
 def run_analysis(case_id):
-    case = InspectionCase.query.get_or_404(case_id)
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Inspection case not found."}), 404
+
+    # Strict RBAC Case Ownership Check
+    err_resp, err_code = check_case_access(case, g.current_user, for_mutation=True)
+    if err_resp:
+        return err_resp, err_code
+
     evidences = PackageEvidence.query.filter_by(case_id=case.id).all()
     if not evidences:
         return jsonify({"error": "Cannot run analysis without uploaded packaging evidence."}), 400

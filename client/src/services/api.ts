@@ -63,6 +63,17 @@ export const api = {
   uploadEvidence: (caseId: number, formData: FormData) => 
     apiFetch<{ evidence: any; quality_analysis: any }>(`/api/inspections/${caseId}/evidence`, { method: "POST", body: formData }),
   runAnalysis: (caseId: number) => apiFetch<any>(`/api/inspections/${caseId}/analyze`, { method: "POST" }),
+  saveMeasurements: (caseId: number, data: {
+    actual_net_quantity?: string;
+    actual_pdp_width_cm?: number;
+    actual_pdp_height_cm?: number;
+    actual_font_height_mm?: number;
+    measurement_method?: string;
+    calibrated_scale_used?: boolean;
+  }) => apiFetch<any>(`/api/inspections/${caseId}/measurements`, { method: "POST", body: JSON.stringify(data) }),
+  getCaseDocuments: (caseId: number) => apiFetch<{ documents: any[]; count: number }>(`/api/inspections/${caseId}/documents`),
+  verifyCaseDocument: (caseId: number, docId: number, data: { status: string; rejection_reason?: string; notes?: string }) =>
+    apiFetch<any>(`/api/inspections/${caseId}/documents/${docId}/verify`, { method: "POST", body: JSON.stringify(data) }),
 
   // Reviews & Senior Adjudication
   getSeniorOverview: () => apiFetch<any>("/api/reviews/overview"),
@@ -77,12 +88,46 @@ export const api = {
     return apiFetch<{ queue: any[]; count: number }>(`/api/reviews/queue${qs ? `?${qs}` : ""}`);
   },
   getProductHistory: (productId: number) => apiFetch<any>(`/api/reviews/products/${productId}/history`),
-  submitInspectorReview: (caseId: number, data: { remarks: string; corrections: Record<string, string> }) =>
+  submitInspectorReview: (caseId: number, data: { remarks?: string; corrections?: Record<string, string>; signed_by_name?: string }) =>
     apiFetch<any>(`/api/reviews/${caseId}/inspector`, { method: "POST", body: JSON.stringify(data) }),
   submitSeniorAction: (caseId: number, data: { action: string; override_reason?: string; statutory_justification?: string; remarks?: string; violation_id?: number }) =>
     apiFetch<any>(`/api/reviews/${caseId}/senior-action`, { method: "POST", body: JSON.stringify(data) }),
+  returnCaseForReinspection: (caseId: number, data: { reason: string; statutory_citation?: string; remarks?: string }) =>
+    apiFetch<any>(`/api/reviews/${caseId}/return`, { method: "POST", body: JSON.stringify(data) }),
+  finalizeCaseReview: (caseId: number, data: { action: string; override_reason?: string; statutory_justification?: string; remarks?: string }) =>
+    apiFetch<any>(`/api/reviews/${caseId}/finalize`, { method: "POST", body: JSON.stringify(data) }),
   submitViolationAction: (caseId: number, violationId: number, data: { action: string; override_reason?: string; statutory_justification?: string }) =>
     apiFetch<any>(`/api/reviews/${caseId}/violations/${violationId}/action`, { method: "POST", body: JSON.stringify(data) }),
+
+  // Innovation #5: Brand-Wide & Systemic Violation Intelligence
+  getSystemicPatterns: (status = "ALL") => {
+    const p = status && status !== "ALL" ? `?status=${encodeURIComponent(status)}` : "";
+    return apiFetch<{ patterns: any[]; count: number }>(`/api/reviews/intelligence/patterns${p}`);
+  },
+  updateSystemicPatternAction: (patternId: number, data: { status: string; notes?: string }) =>
+    apiFetch<any>(`/api/reviews/intelligence/patterns/${patternId}/action`, { method: "POST", body: JSON.stringify(data) }),
+
+  // Senior Officer Audit Scheduling
+  getEligibleInspectorsForAudit: (params?: { category_id?: number; plant_id?: number; jurisdiction_id?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.category_id) q.append("category_id", String(params.category_id));
+    if (params?.plant_id) q.append("plant_id", String(params.plant_id));
+    if (params?.jurisdiction_id) q.append("jurisdiction_id", String(params.jurisdiction_id));
+    const qs = q.toString();
+    return apiFetch<{ inspectors: any[]; count: number }>(`/api/inspections/eligible-inspectors${qs ? `?${qs}` : ""}`);
+  },
+  scheduleAudit: (data: any) =>
+    apiFetch<{ message: string; case: any }>("/api/inspections/schedule", { method: "POST", body: JSON.stringify(data) }),
+  getScheduledAudits: (params?: { status?: string; search?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.status) q.append("status", params.status);
+    if (params?.search) q.append("search", params.search);
+    const qs = q.toString();
+    return apiFetch<{ audits: any[]; count: number }>(`/api/inspections/scheduled${qs ? `?${qs}` : ""}`);
+  },
+  updateScheduledAudit: (caseId: number, data: any) =>
+    apiFetch<{ message: string; case: any }>(`/api/inspections/${caseId}/schedule`, { method: "PUT", body: JSON.stringify(data) }),
+
 
 
   // Rules & Governance
@@ -90,6 +135,68 @@ export const api = {
   createRule: (data: any) => apiFetch<{ rule: any }>("/api/rules", { method: "POST", body: JSON.stringify(data) }),
   updateRule: (ruleId: number, data: any) => apiFetch<{ message: string; rule: any }>(`/api/rules/${ruleId}`, { method: "PUT", body: JSON.stringify(data) }),
   toggleRuleStatus: (ruleId: number) => apiFetch<{ message: string; rule: any }>(`/api/rules/${ruleId}/toggle-status`, { method: "PATCH" }),
+  getRuleVersions: (ruleId: number) => apiFetch<{ rule_code: string; versions: any[]; count: number }>(`/api/admin/rules/${ruleId}/versions`),
+  createRuleVersion: (ruleId: number, data: any) => apiFetch<{ rule: any }>(`/api/admin/rules/${ruleId}/version`, { method: "POST", body: JSON.stringify(data) }),
+  getRuleRequirements: (ruleId: number) => apiFetch<{ requirements: any[]; count: number }>(`/api/admin/rules/${ruleId}/requirements`),
+  addRuleRequirement: (ruleId: number, data: any) => apiFetch<{ requirement: any }>(`/api/admin/rules/${ruleId}/requirements`, { method: "POST", body: JSON.stringify(data) }),
+  deleteRuleRequirement: (ruleId: number, reqId: number) => apiFetch<{ message: string }>(`/api/admin/rules/${ruleId}/requirements/${reqId}`, { method: "DELETE" }),
+
+  // Innovation #9: Regulatory Change Impact Simulator
+  getRuleImpact: (ruleId: number) => apiFetch<any>(`/api/admin/rules/${ruleId}/impact`),
+  simulateRegulatoryImpact: (data: { rule_id?: number; category_ids?: number[]; effective_date?: string }) =>
+    apiFetch<any>("/api/admin/rules/impact-simulate", { method: "POST", body: JSON.stringify(data) }),
+
+  // Company Master Data
+  getCompanies: (filters?: { search?: string; status?: string }) => {
+    const p = new URLSearchParams();
+    if (filters?.search) p.append("search", filters.search);
+    if (filters?.status && filters.status !== "ALL") p.append("status", filters.status);
+    const qs = p.toString();
+    return apiFetch<{ companies: any[]; count: number }>(`/api/admin/companies${qs ? `?${qs}` : ""}`);
+  },
+  getCompany: (id: number) => apiFetch<{ company: any }>(`/api/admin/companies/${id}`),
+  createCompany: (data: any) => apiFetch<{ company: any }>("/api/admin/companies", { method: "POST", body: JSON.stringify(data) }),
+  updateCompany: (id: number, data: any) => apiFetch<{ message: string; company: any }>(`/api/admin/companies/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  toggleCompanyStatus: (id: number) => apiFetch<{ message: string; company: any }>(`/api/admin/companies/${id}/toggle-status`, { method: "PATCH" }),
+  deleteCompany: (id: number) => apiFetch<{ message: string }>(`/api/admin/companies/${id}`, { method: "DELETE" }),
+
+  // Jurisdictions Master Data
+  getJurisdictions: (filters?: { search?: string; state?: string }) => {
+    const p = new URLSearchParams();
+    if (filters?.search) p.append("search", filters.search);
+    if (filters?.state && filters.state !== "ALL") p.append("state", filters.state);
+    const qs = p.toString();
+    return apiFetch<{ jurisdictions: any[]; count: number }>(`/api/admin/jurisdictions${qs ? `?${qs}` : ""}`);
+  },
+  createJurisdiction: (data: any) => apiFetch<{ jurisdiction: any }>("/api/admin/jurisdictions", { method: "POST", body: JSON.stringify(data) }),
+  updateJurisdiction: (id: number, data: any) => apiFetch<{ message: string; jurisdiction: any }>(`/api/admin/jurisdictions/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  toggleJurisdictionStatus: (id: number) => apiFetch<{ message: string; jurisdiction: any }>(`/api/admin/jurisdictions/${id}/toggle-status`, { method: "PATCH" }),
+
+  // Plants / Locations Master Data
+  getPlants: (filters?: { search?: string; company_id?: number; jurisdiction_id?: number }) => {
+    const p = new URLSearchParams();
+    if (filters?.search) p.append("search", filters.search);
+    if (filters?.company_id) p.append("company_id", String(filters.company_id));
+    if (filters?.jurisdiction_id) p.append("jurisdiction_id", String(filters.jurisdiction_id));
+    const qs = p.toString();
+    return apiFetch<{ plants: any[]; count: number }>(`/api/admin/plants${qs ? `?${qs}` : ""}`);
+  },
+  createPlant: (data: any) => apiFetch<{ plant: any }>("/api/admin/plants", { method: "POST", body: JSON.stringify(data) }),
+  updatePlant: (id: number, data: any) => apiFetch<{ message: string; plant: any }>(`/api/admin/plants/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  togglePlantStatus: (id: number) => apiFetch<{ message: string; plant: any }>(`/api/admin/plants/${id}/toggle-status`, { method: "PATCH" }),
+
+  // Inspector Eligibility Configuration
+  getInspectors: () => apiFetch<{ inspectors: any[]; count: number }>("/api/admin/inspectors"),
+  getInspectorEligibility: (id: number) => apiFetch<{ inspector: any; categories: any[]; jurisdictions: any[] }>(`/api/admin/inspectors/${id}/eligibility`),
+  configureInspectorEligibility: (id: number, data: { category_ids: number[]; jurisdiction_ids: number[] }) =>
+    apiFetch<{ message: string; inspector_id: number; categories_count: number; jurisdictions_count: number }>(`/api/admin/inspectors/${id}/eligibility`, { method: "POST", body: JSON.stringify(data) }),
+  getEligibleInspectors: (filters: { category_id?: number; jurisdiction_id?: number }) => {
+    const p = new URLSearchParams();
+    if (filters.category_id) p.append("category_id", String(filters.category_id));
+    if (filters.jurisdiction_id) p.append("jurisdiction_id", String(filters.jurisdiction_id));
+    const qs = p.toString();
+    return apiFetch<{ eligible_inspectors: any[]; count: number }>(`/api/admin/inspectors/eligible${qs ? `?${qs}` : ""}`);
+  },
 
   // Product Categories
   getCategories: () => apiFetch<{ categories: any[]; count: number }>("/api/admin/categories"),
@@ -106,6 +213,7 @@ export const api = {
   // Analytics & Admin
   getAnalyticsSummary: () => apiFetch<any>("/api/analytics/summary"),
   getRepeatViolators: () => apiFetch<{ repeat_violators: any[] }>("/api/analytics/repeat-violators"),
+  getDashboardStats: () => apiFetch<{ stats: any; recent_audit_logs: any[] }>("/api/admin/dashboard-stats"),
   getUsers: (filters?: { role?: string; status?: string; search?: string }) => {
     const params = new URLSearchParams();
     if (filters?.role && filters.role !== "ALL") params.append("role", filters.role);
@@ -133,6 +241,44 @@ export const api = {
 
   // Media
   getMediaUrl: (path: string) => path.startsWith("http") ? path : `${API_BASE}${path}`,
-  getReportPdfUrl: (caseId: number) => `${API_BASE}/api/reports/${caseId}/pdf`
+  getReportPdfUrl: (caseId: number) => `${API_BASE}/api/reports/${caseId}/pdf`,
+
+  // Company Module
+  getCompanyDashboard: () => apiFetch<any>("/api/company/dashboard"),
+  getCompanyProfile: () => apiFetch<{ company: any }>("/api/company/profile"),
+  updateCompanyProfile: (data: any) => apiFetch<{ message: string; company: any }>("/api/company/profile", { method: "PUT", body: JSON.stringify(data) }),
+  getCompanyPlants: () => apiFetch<{ plants: any[]; count: number }>("/api/company/plants"),
+  getCompanyProducts: (filters?: { search?: string; category_id?: number }) => {
+    const p = new URLSearchParams();
+    if (filters?.search) p.append("search", filters.search);
+    if (filters?.category_id) p.append("category_id", String(filters.category_id));
+    const qs = p.toString();
+    return apiFetch<{ products: any[]; count: number; categories?: any[] }>(`/api/company/products${qs ? `?${qs}` : ""}`);
+  },
+  getCompanyProductDetail: (id: number) => apiFetch<any>(`/api/company/products/${id}`),
+  getCompanyDocuments: (status = "ALL") => {
+    const p = status && status !== "ALL" ? `?status=${encodeURIComponent(status)}` : "";
+    return apiFetch<{ documents: any[]; count: number }>(`/api/company/documents${p}`);
+  },
+  uploadCompanyDocument: (formData: FormData) => 
+    apiFetch<{ message: string; document: any }>("/api/company/documents", { method: "POST", body: formData }),
+  replaceCompanyDocument: (docId: number, formData: FormData) =>
+    apiFetch<{ message: string; document: any }>(`/api/company/documents/${docId}/replace`, { method: "POST", body: formData }),
+  getCompanyAudits: (filters?: { status?: string; search?: string }) => {
+    const p = new URLSearchParams();
+    if (filters?.status && filters.status !== "ALL") p.append("status", filters.status);
+    if (filters?.search) p.append("search", filters.search);
+    const qs = p.toString();
+    return apiFetch<{ audits: any[]; count: number }>(`/api/company/audits${qs ? `?${qs}` : ""}`);
+  },
+  getCompanyAuditDetail: (caseId: number) => apiFetch<any>(`/api/company/audits/${caseId}`),
+  getCompanyDocumentDownloadUrl: (docId: number) => `${API_BASE}/api/company/documents/${docId}/download`,
+  getCompanyReportDownloadUrl: (caseNumberOrId: string | number) => `${API_BASE}/api/company/reports/${caseNumberOrId}/pdf`,
+  getCompanyNotifications: () => apiFetch<{ notifications: any[]; count: number; unread_count: number }>("/api/company/notifications"),
+  markCompanyNotificationRead: (notifId: number) => apiFetch<any>(`/api/company/notifications/${notifId}/read`, { method: "POST" }),
+  getCompanyRules: () => apiFetch<{ rules: any[]; count: number; categories: any[]; effective_rule_version: string }>("/api/company/rules")
 };
+
+export const packsureApi = api;
+export default api;
 

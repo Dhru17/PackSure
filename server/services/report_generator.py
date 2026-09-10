@@ -180,12 +180,15 @@ class ReportGenerator:
                 caption = f"<b>{p_name}</b><br/>Quality: {r_status} (Blur: {r_blur})"
                 if ann_path and os.path.exists(ann_path):
                     try:
+                        from PIL import Image as PILImage
+                        with PILImage.open(ann_path) as pimg:
+                            pimg.verify()
                         im = Image(ann_path, width=120, height=85)
                         cell = [im, Paragraph(caption, cell_style)]
                     except Exception:
-                        cell = [Paragraph(f"[Image: {p_name}]", cell_style), Paragraph(caption, cell_style)]
+                        cell = [Paragraph(f"<b>[Image: {p_name}]</b>", cell_style), Paragraph(caption, cell_style)]
                 else:
-                    cell = [Paragraph(f"[Image: {p_name}]", cell_style), Paragraph(caption, cell_style)]
+                    cell = [Paragraph(f"<b>[Image: {p_name}]</b>", cell_style), Paragraph(caption, cell_style)]
 
                 curr_row.append(cell)
                 if len(curr_row) == 4:

@@ -1,4 +1,4 @@
-export type UserRole = 'INSPECTOR' | 'SENIOR_OFFICER' | 'ADMIN';
+export type UserRole = 'INSPECTOR' | 'SENIOR_OFFICER' | 'ADMIN' | 'COMPANY';
 
 export interface User {
   id: number;
@@ -8,7 +8,100 @@ export interface User {
   badge_number?: string;
   jurisdiction_district?: string;
   phone_number?: string;
+  company_id?: number | null;
   is_active: boolean;
+  category_eligibilities?: InspectorCategoryEligibility[];
+  jurisdiction_eligibilities?: InspectorJurisdictionEligibility[];
+  created_at?: string;
+}
+
+export interface Company {
+  id: number;
+  name: string;
+  legal_entity_name?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pin_code?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  is_importer: boolean;
+  registration_number?: string;
+  is_active: boolean;
+  plants_count?: number;
+  products_count?: number;
+  total_inspections?: number;
+  total_violations?: number;
+  created_at?: string;
+}
+
+export type Manufacturer = Company;
+
+export interface Jurisdiction {
+  id: number;
+  code: string;
+  name: string;
+  state: string;
+  district?: string;
+  description?: string;
+  is_active: boolean;
+  plants_count?: number;
+  inspectors_count?: number;
+  created_at?: string;
+}
+
+export interface Plant {
+  id: number;
+  company_id: number;
+  company_name?: string;
+  plant_code: string;
+  name: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pin_code?: string;
+  jurisdiction_id?: number | null;
+  jurisdiction_name?: string | null;
+  jurisdiction_code?: string | null;
+  contact_person?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface InspectorCategoryEligibility {
+  id: number;
+  inspector_id: number;
+  category_id: number;
+  category_code?: string;
+  category_name?: string;
+  certified_date?: string;
+  notes?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface InspectorJurisdictionEligibility {
+  id: number;
+  inspector_id: number;
+  jurisdiction_id: number;
+  jurisdiction_code?: string;
+  jurisdiction_name?: string;
+  jurisdiction_state?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface RuleRequirement {
+  id: number;
+  rule_id: number;
+  requirement_code: string;
+  title: string;
+  requirement_type: string;
+  description?: string;
+  condition?: Record<string, any>;
+  is_mandatory: boolean;
   created_at?: string;
 }
 
@@ -130,6 +223,26 @@ export interface Violation {
   senior_override_reason?: string;
 }
 
+export interface CompanyDocument {
+  id: number;
+  company_id: number;
+  company_name?: string;
+  document_type: string;
+  document_number: string;
+  title: string;
+  issuing_authority?: string;
+  issue_date?: string;
+  valid_until?: string;
+  file_path: string;
+  status: 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED';
+  verified_by_id?: number;
+  verified_by_name?: string;
+  verified_at?: string;
+  rejection_reason?: string;
+  notes?: string;
+  created_at: string;
+}
+
 export interface InspectionCase {
   id: number;
   case_number: string;
@@ -153,6 +266,17 @@ export interface InspectionCase {
   source_type: string;
   inspector_remarks?: string;
   senior_remarks?: string;
+  review_cycle?: number;
+  rule_version?: string;
+  actual_net_quantity?: string;
+  actual_pdp_width_cm?: number;
+  actual_pdp_height_cm?: number;
+  actual_font_height_mm?: number;
+  measurement_method?: string;
+  calibrated_scale_used?: boolean;
+  signed_by_name?: string;
+  signed_at?: string;
+  digital_signature_hash?: string;
   created_at: string;
   submitted_at?: string;
   finalized_at?: string;
@@ -169,11 +293,80 @@ export interface RegulatoryRule {
   title: string;
   description: string;
   statutory_citation: string;
+  government_authority?: string;
+  notification_reference?: string;
+  notification_date?: string;
+  amendment_title?: string;
+  status?: string;
+  calculated_effective_status?: string;
+  official_source?: string;
   source_document: string;
   validation_logic_type: string;
+  applicability_criteria?: Record<string, any>;
   effective_from: string;
   effective_to?: string;
   is_active: boolean;
+  requirements_count?: number;
+  requirements?: RuleRequirement[];
+  categories_count?: number;
+  created_at?: string;
+}
+
+export interface RegulatoryImpactResult {
+  simulation_timestamp: string;
+  effective_date: string;
+  rule?: {
+    id: number;
+    rule_code: string;
+    version: string;
+    title: string;
+    statutory_citation: string;
+    government_authority?: string;
+    notification_reference?: string;
+    notification_date?: string;
+    amendment_title?: string;
+    status?: string;
+    effective_from: string;
+    effective_to?: string;
+    validation_logic_type?: string;
+  };
+  summary: {
+    affected_categories_count: number;
+    affected_companies_count: number;
+    affected_plants_count: number;
+    affected_products_count: number;
+    total_scoped_products_count?: number;
+    affected_upcoming_audits_count: number;
+  };
+  affected_categories: Array<{ id: number; category_code: string; name: string; products_count: number }>;
+  affected_companies: Array<{ id: number; name: string; legal_entity_name: string; city: string; state: string; products_count: number; plants_count: number; is_importer: boolean }>;
+  affected_plants: Array<{ id: number; plant_code: string; name: string; company_name: string; city: string; state: string; jurisdiction_name: string; is_active: boolean }>;
+  affected_products: Array<{ 
+    id: number; 
+    barcode: string; 
+    brand_name: string; 
+    commodity_name: string; 
+    category_name: string; 
+    company_name: string; 
+    default_net_quantity: string; 
+    default_mrp: number; 
+    package_type: string;
+    is_imported?: boolean;
+    impact_status?: 'POTENTIALLY_AFFECTED' | 'NO_IMPACT_IDENTIFIED' | string;
+    reassessment_reason?: string;
+  }>;
+  affected_audits: Array<{ 
+    id: number; 
+    case_number: string; 
+    product_name: string; 
+    company_name: string; 
+    inspector_name: string; 
+    status: string; 
+    impact_status?: string;
+    location_name: string; 
+    created_at: string;
+  }>;
+  legal_disclaimer: string;
 }
 
 export interface AuditLog {

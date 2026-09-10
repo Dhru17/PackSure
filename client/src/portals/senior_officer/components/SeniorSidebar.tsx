@@ -7,13 +7,17 @@ import {
   User, 
   LogOut, 
   Scale,
-  ShieldCheck
+  ShieldCheck,
+  Calendar,
+  Sparkles
 } from 'lucide-react';
 import { useAuthStore } from '../../../state/authStore';
 
 export type SeniorNavTab = 
-  | 'home' 
-  | 'reviews' 
+  | 'home'
+  | 'upcoming'
+  | 'reviews'
+  | 'intelligence'
   | 'history' 
   | 'notifications' 
   | 'profile';
@@ -34,21 +38,23 @@ export const SeniorSidebar: React.FC<SeniorSidebarProps> = ({
   const { logout } = useAuthStore();
 
   const navItems = [
-    { id: 'home' as SeniorNavTab, label: 'Home', icon: Home },
+    { id: 'home' as SeniorNavTab, label: 'Dashboard', icon: Home },
+    { id: 'upcoming' as SeniorNavTab, label: 'Field Audits', icon: Calendar },
     { 
       id: 'reviews' as SeniorNavTab, 
-      label: 'Reviews', 
+      label: 'Review Queue', 
       icon: ClipboardCheck,
       badge: pendingReviewsCount > 0 ? pendingReviewsCount : undefined 
     },
-    { id: 'history' as SeniorNavTab, label: 'History', icon: History },
+    { id: 'intelligence' as SeniorNavTab, label: 'Systemic Intelligence', icon: Sparkles },
+    { id: 'history' as SeniorNavTab, label: 'Precedent Archive', icon: History },
     { 
       id: 'notifications' as SeniorNavTab, 
-      label: 'Notifications', 
+      label: 'Alert Center', 
       icon: Bell,
       badge: unreadNotificationsCount > 0 ? unreadNotificationsCount : undefined 
     },
-    { id: 'profile' as SeniorNavTab, label: 'Profile', icon: User },
+    { id: 'profile' as SeniorNavTab, label: 'Officer Profile', icon: User },
   ];
 
   return (
