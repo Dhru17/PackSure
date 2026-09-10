@@ -940,7 +940,10 @@ def run_analysis(case_id):
         val = item.get('value')
         if val:
             source_panel = item.get('source_image') or item.get('image_source') or "FRONT"
-            matching_ev = next((e for e in evidences if e.surface_type.value.upper() == str(source_panel).upper()), evidences[0])
+            matching_ev = next(
+                (e for e in evidences if e.surface_type.value.upper() in str(source_panel).upper() or str(source_panel).upper() in e.surface_type.value.upper()),
+                evidences[0]
+            )
             bbox = item.get('bounding_box') or {}
             decl = Declaration(
                 case_id=case.id,
@@ -960,6 +963,8 @@ def run_analysis(case_id):
             db.session.add(decl)
             saved_types.add(dtype)
 
+    db.session.flush()
+
     # 5. Save Compliance Checks & Violations against Database Rules
     for ed in eval_decls:
         raw_r_name = ed.get("rule_name", "RULE_6")
@@ -973,10 +978,40 @@ def run_analysis(case_id):
         if not rule:
             rule = RegulatoryRule.query.filter(RegulatoryRule.rule_code.ilike(f"%{clean_code}%")).first()
         if not rule:
+            ed_title = ed.get("title", "")
+            if ed_title:
+                rule = RegulatoryRule.query.filter(RegulatoryRule.title.ilike(f"%{ed_title[:15]}%")).first()
+        if not rule:
             rule = RegulatoryRule.query.first() # fallback default
 
-        source_panel = ed.get("source_panel") or ed.get("image_source") or "FRONT"
-        matching_ev = next((e for e in evidences if e.surface_type.value.upper() == str(source_panel).upper()), evidences[0])
+        source_str = str(ed.get("source_image") or ed.get("panel_name") or ed.get("source_panel") or ed.get("image_source") or "").upper()
+        matching_ev = None
+        for ev in evidences:
+            st = ev.surface_type.value.upper()
+            if st in source_str or source_str in st:
+                matching_ev = ev
+                break
+
+        extracted_v = ed.get("extracted_value")
+        if not matching_ev and extracted_v:
+            matching_decl = Declaration.query.filter_by(case_id=case.id, extracted_value=str(extracted_v)).first()
+            if matching_decl and matching_decl.evidence_id:
+                matching_ev = next((e for e in evidences if e.id == matching_decl.evidence_id), None)
+
+        if not matching_ev:
+            matching_ev = evidences[0]
+
+        bbox = ed.get("bbox") or {}
+        if not bbox or (isinstance(bbox, dict) and bbox.get("w", 0) == 0):
+            if extracted_v:
+                matching_decl = Declaration.query.filter_by(case_id=case.id, extracted_value=str(extracted_v)).first()
+                if matching_decl and (matching_decl.bbox_w > 0 or matching_decl.bbox_h > 0):
+                    bbox = {
+                        "x": matching_decl.bbox_x,
+                        "y": matching_decl.bbox_y,
+                        "w": matching_decl.bbox_w,
+                        "h": matching_decl.bbox_h
+                    }
 
         status_str = ed.get("status", "PASS").replace(" ", "_").upper()
         try:
@@ -991,12 +1026,18 @@ def run_analysis(case_id):
             confidence=ed.get("confidence", 0.0),
             reason_explanation=ed.get("why_decision") or ed.get("remarks", ""),
             evaluated_value=ed.get("extracted_value", ""),
-            expected_condition=rule.title if rule else ed.get("title", ""),
-            evidence_id=matching_ev.id
+            expected_condition=ed.get("title") or (rule.title if rule else ""),
+            evidence_id=matching_ev.id if matching_ev else None,
+            bbox_json=json.dumps(bbox) if bbox else None
         )
         db.session.add(chk)
 
     for v in violations:
+        v_source = str(v.get("source_image") or "").upper()
+        v_ev = next(
+            (e for e in evidences if e.surface_type.value.upper() in v_source or v_source in e.surface_type.value.upper()),
+            evidences[0]
+        )
         viol = Violation(
             case_id=case.id,
             rule_code=v.get("rule_number", "Rule 6"),
@@ -1004,7 +1045,8 @@ def run_analysis(case_id):
             description=v.get("reason_for_decision") or v.get("reason_for_failure", ""),
             severity=ViolationSeverity.HIGH,
             evidence_snippet=v.get("ocr_evidence", "N/A"),
-            evidence_image_id=evidences[0].id
+            evidence_image_id=v_ev.id if v_ev else evidences[0].id,
+            bbox_json=json.dumps(v.get("bounding_box", {})) if v.get("bounding_box") else None
         )
         db.session.add(viol)
 

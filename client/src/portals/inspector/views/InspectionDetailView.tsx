@@ -256,7 +256,7 @@ export const InspectionDetailView: React.FC<InspectionDetailViewProps> = ({
                   return (
                     <tr key={chk.id} className="hover:bg-[#F8FAFC] transition-colors">
                       <td className="px-6 py-3.5 font-bold text-[#1E293B]">
-                        {chk.rule_title || chk.rule_code || 'Statutory Requirement'}
+                        {chk.expected_condition || chk.rule_title || chk.rule_code || 'Statutory Requirement'}
                       </td>
                       <td className="px-6 py-3.5 text-[#475569] font-medium">
                         {chk.reason_explanation || chk.evaluated_value || 'Declaration verified on package.'}

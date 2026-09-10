@@ -62,43 +62,59 @@ class OCRService:
             return []
 
         blocks = []
+        raw_items = []
         try:
             res, _ = engine(ocr_input)
             if res:
-                for item in res:
-                    # item format in RapidOCR: [box_points, text, score]
-                    # box_points: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
-                    pts, text, score = item[0], item[1].strip(), float(item[2])
-                    if not text:
-                        continue
-
-                    # Calculate axis-aligned bounding box
-                    xs = [p[0] for p in pts]
-                    ys = [p[1] for p in pts]
-                    min_x, max_x = max(0, min(xs)), min(img_w, max(xs))
-                    min_y, max_y = max(0, min(ys)), min(img_h, max(ys))
-
-                    w_px = max(max_x - min_x, 1)
-                    h_px = max(max_y - min_y, 1)
-
-                    norm_bbox = {
-                        'x': round(min_x / img_w, 4),
-                        'y': round(min_y / img_h, 4),
-                        'w': round(w_px / img_w, 4),
-                        'h': round(h_px / img_h, 4),
-                        'pixel_box': [int(min_x), int(min_y), int(w_px), int(h_px)],
-                        'polygon': [[round(p[0]/img_w, 4), round(p[1]/img_h, 4)] for p in pts]
-                    }
-
-                    blocks.append({
-                        'text': text,
-                        'confidence': round(score, 4),
-                        'bbox': norm_bbox,
-                        'panel_name': panel_name,
-                        'image_path': image_path
-                    })
+                raw_items.extend(res)
         except Exception as e:
             print(f"Error running OCR on {image_path}: {e}")
+
+        # Resilient fallback: If preprocessed pass returns fewer than 6 text blocks,
+        # run on original image to capture declarations that CLAHE/denoising might have washed out
+        if len(raw_items) < 6 and enhanced_img is not None:
+            try:
+                res_orig, _ = engine(orig_img)
+                if res_orig:
+                    existing_texts = {item[1].strip().lower() for item in raw_items if item[1]}
+                    for item in res_orig:
+                        t = item[1].strip()
+                        if t and t.lower() not in existing_texts:
+                            raw_items.append(item)
+                            existing_texts.add(t.lower())
+            except Exception as e:
+                print(f"Error in OCR fallback pass on {image_path}: {e}")
+
+        for item in raw_items:
+            pts, text, score = item[0], item[1].strip(), float(item[2])
+            if not text:
+                continue
+
+            # Calculate axis-aligned bounding box
+            xs = [p[0] for p in pts]
+            ys = [p[1] for p in pts]
+            min_x, max_x = max(0, min(xs)), min(img_w, max(xs))
+            min_y, max_y = max(0, min(ys)), min(img_h, max(ys))
+
+            w_px = max(max_x - min_x, 1)
+            h_px = max(max_y - min_y, 1)
+
+            norm_bbox = {
+                'x': round(min_x / img_w, 4),
+                'y': round(min_y / img_h, 4),
+                'w': round(w_px / img_w, 4),
+                'h': round(h_px / img_h, 4),
+                'pixel_box': [int(min_x), int(min_y), int(w_px), int(h_px)],
+                'polygon': [[round(p[0]/img_w, 4), round(p[1]/img_h, 4)] for p in pts]
+            }
+
+            blocks.append({
+                'text': text,
+                'confidence': round(score, 4),
+                'bbox': norm_bbox,
+                'panel_name': panel_name,
+                'image_path': image_path
+            })
 
         # STEP 8: Barcode detection via pyzbar and OpenCV BarcodeDetector
         barcodes = VisionAnalyzer.detect_barcodes_robust(image_path, panel_name=panel_name)
@@ -341,14 +357,17 @@ class OCRService:
                     )
                     return
 
-        # 2. Sequential match: Block i has label "BATCH", check adjacent blocks
+        # 2. Sequential match: Block i has label "BATCH" or "LOT", check adjacent blocks (forward & backward)
+        excluded_words = {'DATE', 'PRICE', 'MRP', 'NO', 'PKD', 'USE BY', 'UNIBIC', 'PARLE', 'BRITANNIA', 'NESTLE', 'ITC', 'AMUL', 'HALDIRAM', 'FREE', 'OTHER', 'SIGNATURE'}
         for i, b in enumerate(blocks):
             txt = b['text'].strip()
             if lot_label.search(txt):
-                for j in range(i + 1, min(i + 4, len(blocks))):
+                # Search immediately preceding 2 blocks and next 4 blocks
+                cand_indices = list(range(i + 1, min(i + 5, len(blocks)))) + list(range(max(0, i - 2), i))
+                for j in cand_indices:
                     next_txt = blocks[j]['text'].strip()
-                    if 1 <= len(next_txt) <= 12 and not re.search(r'\b\d{6}\b', next_txt) and not re.search(r'\b(?:mrp|lic|fssai|use\s*by|net)\b', next_txt, re.IGNORECASE):
-                        if next_txt.upper() not in ['DATE', 'PRICE', 'MRP', 'NO', 'PKD', 'USE BY', '18/7/26', '14/1/27']:
+                    if 2 <= len(next_txt) <= 18 and not re.search(r'\b\d{6}\b', next_txt) and not re.search(r'\b(?:mrp|lic|fssai|use\s*by|net)\b', next_txt, re.IGNORECASE):
+                        if next_txt.upper() not in excluded_words and not re.search(r'^\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}$', next_txt):
                             comb = f"{txt} -> {next_txt}"
                             cls._update_field_if_better(
                                 structured, 'batch_or_lot_number',
@@ -487,7 +506,7 @@ class OCRService:
             re.IGNORECASE
         )
         address_markers = re.compile(
-            r'\b\d{6}\b|crossing|road|street|nagar|plot|industrial|phase|city|india|dist|state|estate|village|taluk|lane|mumbai|delhi|kolkata|hyderabad|gujarat|maharashtra|mh|up|ts',
+            r'\b\d{6}\b|crossing|road|street|nagar|plot|industrial|phase|city|india|dist|state|estate|village|taluk|lane|mumbai|delhi|kolkata|hyderabad|gujarat|maharashtra|mh|up|ts|bengaluru|bangalore|karnataka|chennai|tamil\s*nadu|pune|noida|gurugram|gurgaon|haryana|rajasthan|jaipur|kerala',
             re.IGNORECASE
         )
 
@@ -662,16 +681,23 @@ class OCRService:
         ]
 
         if not comm_val or (brand_val and comm_val.lower() == brand_val.lower()):
+            found_comm = False
             for b in blocks:
                 txt_lower = b['text'].lower()
                 for c in common_commodities:
                     if c in txt_lower and (not brand_val or c != brand_val.lower()):
+                        full_txt = b['text'].strip()
+                        if len(full_txt.split()) <= 4 and not re.search(r'\b(ingredients|allergen|nutrition|servings|contains)\b', full_txt, re.IGNORECASE):
+                            chosen = full_txt
+                        else:
+                            chosen = c.capitalize()
                         cls._set_field(
                             structured, 'generic_commodity_name',
-                            c.capitalize(), b['confidence'], b['panel_name'], b['bbox'], b['text']
+                            chosen, b['confidence'], b['panel_name'], b['bbox'], b['text']
                         )
+                        found_comm = True
                         break
-                if structured['generic_commodity_name'].get('value'):
+                if found_comm:
                     break
 
         # Populate product_name

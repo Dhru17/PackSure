@@ -82,13 +82,40 @@ export const Step5Review: React.FC<Step5ReviewProps> = ({
   };
 
   const handleOpenEvidence = (chk: any) => {
-    const matchingEv = c.evidences?.find(e => e.id === chk.evidence_id) || c.evidences?.[0];
+    let matchingEv = c.evidences?.find(e => e.id === chk.evidence_id);
+    let bbox = chk.bbox;
+    let surfaceName: string | undefined = matchingEv?.surface_type;
+
+    const decl = c.declarations?.find(d => 
+      (chk.evaluated_value && d.extracted_value && (d.extracted_value === chk.evaluated_value || d.extracted_value.includes(chk.evaluated_value) || chk.evaluated_value.includes(d.extracted_value))) ||
+      (chk.rule_code && d.field_type && chk.rule_code.toLowerCase().includes(d.field_type.toLowerCase()))
+    );
+
+    if (decl) {
+      if (decl.evidence_id) {
+        const evFromDecl = c.evidences?.find(e => e.id === decl.evidence_id);
+        if (evFromDecl) matchingEv = evFromDecl;
+      }
+      if (!bbox || Object.keys(bbox).length === 0 || (bbox.w === 0 && bbox.h === 0)) {
+        if (decl.bbox && Object.keys(decl.bbox).length > 0) {
+          bbox = decl.bbox;
+        }
+      }
+      if (decl.surface_name) {
+        surfaceName = decl.surface_name;
+      }
+    }
+
+    if (!matchingEv) {
+      matchingEv = c.evidences?.[0];
+    }
+
     setActivePreview({
       imagePath: matchingEv?.storage_path,
-      surfaceName: matchingEv?.surface_type || 'Package Panel',
-      title: chk.rule_title || 'Statutory Requirement',
+      surfaceName: surfaceName || matchingEv?.surface_type || 'Package Panel',
+      title: chk.expected_condition || chk.rule_title || 'Statutory Requirement',
       detectedText: chk.evaluated_value,
-      bbox: chk.bbox
+      bbox: bbox
     });
   };
 
@@ -290,7 +317,7 @@ export const Step5Review: React.FC<Step5ReviewProps> = ({
               >
                 <div>
                   <div className="font-bold text-[#991B1B]">
-                    {chk.rule_title || chk.rule_code} &bull; Non-Compliant
+                    {chk.expected_condition || chk.rule_title || chk.rule_code} &bull; Non-Compliant
                   </div>
                   <p className="text-[#7F1D1D] mt-0.5">
                     {chk.reason_explanation || chk.evaluated_value || 'Mandatory declaration does not meet prescribed requirements.'}

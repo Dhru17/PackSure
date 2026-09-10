@@ -84,13 +84,40 @@ export const Step4Compliance: React.FC<Step4ComplianceProps> = ({
   };
 
   const handleOpenEvidence = (chk: ComplianceCheck) => {
-    const matchingEv = c.evidences?.find(e => e.id === chk.evidence_id) || c.evidences?.[0];
+    let matchingEv = c.evidences?.find(e => e.id === chk.evidence_id);
+    let bbox = chk.bbox;
+    let surfaceName: string | undefined = matchingEv?.surface_type;
+
+    const decl = c.declarations?.find(d => 
+      (chk.evaluated_value && d.extracted_value && (d.extracted_value === chk.evaluated_value || d.extracted_value.includes(chk.evaluated_value) || chk.evaluated_value.includes(d.extracted_value))) ||
+      (chk.rule_code && d.field_type && chk.rule_code.toLowerCase().includes(d.field_type.toLowerCase()))
+    );
+
+    if (decl) {
+      if (decl.evidence_id) {
+        const evFromDecl = c.evidences?.find(e => e.id === decl.evidence_id);
+        if (evFromDecl) matchingEv = evFromDecl;
+      }
+      if (!bbox || Object.keys(bbox).length === 0 || (bbox.w === 0 && bbox.h === 0)) {
+        if (decl.bbox && Object.keys(decl.bbox).length > 0) {
+          bbox = decl.bbox;
+        }
+      }
+      if (decl.surface_name) {
+        surfaceName = decl.surface_name;
+      }
+    }
+
+    if (!matchingEv) {
+      matchingEv = c.evidences?.[0];
+    }
+
     setActivePreview({
       imagePath: matchingEv?.storage_path,
-      surfaceName: matchingEv?.surface_type || 'Package Panel',
-      title: chk.rule_title || 'Statutory Requirement',
+      surfaceName: surfaceName || matchingEv?.surface_type || 'Package Panel',
+      title: chk.expected_condition || chk.rule_title || 'Statutory Requirement',
       detectedText: chk.evaluated_value,
-      bbox: chk.bbox
+      bbox: bbox
     });
   };
 
@@ -173,7 +200,7 @@ export const Step4Compliance: React.FC<Step4ComplianceProps> = ({
                     <div className="space-y-1">
                       <div className="flex items-center gap-2.5">
                         <span className="font-bold text-sm text-[#1E293B]">
-                          {chk.rule_title || chk.rule_code || 'Statutory Requirement'}
+                          {chk.expected_condition || chk.rule_title || chk.rule_code || 'Statutory Requirement'}
                         </span>
                         <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                           dec === 'CORRECTED'

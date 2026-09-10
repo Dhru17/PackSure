@@ -51,13 +51,41 @@ export const Step3AiAnalysis: React.FC<Step3AiAnalysisProps> = ({
   ];
 
   const handleOpenEvidence = (chk: ComplianceCheck) => {
-    const matchingEv = c.evidences?.find(e => e.id === chk.evidence_id) || c.evidences?.[0];
+    let matchingEv = c.evidences?.find(e => e.id === chk.evidence_id);
+    let bbox = chk.bbox;
+    let surfaceName: string | undefined = matchingEv?.surface_type;
+
+    // Cross-reference with c.declarations to get exact photo and bbox if missing or defaulted
+    const decl = c.declarations?.find(d => 
+      (chk.evaluated_value && d.extracted_value && (d.extracted_value === chk.evaluated_value || d.extracted_value.includes(chk.evaluated_value) || chk.evaluated_value.includes(d.extracted_value))) ||
+      (chk.rule_code && d.field_type && chk.rule_code.toLowerCase().includes(d.field_type.toLowerCase()))
+    );
+
+    if (decl) {
+      if (decl.evidence_id) {
+        const evFromDecl = c.evidences?.find(e => e.id === decl.evidence_id);
+        if (evFromDecl) matchingEv = evFromDecl;
+      }
+      if (!bbox || Object.keys(bbox).length === 0 || (bbox.w === 0 && bbox.h === 0)) {
+        if (decl.bbox && Object.keys(decl.bbox).length > 0) {
+          bbox = decl.bbox;
+        }
+      }
+      if (decl.surface_name) {
+        surfaceName = decl.surface_name;
+      }
+    }
+
+    if (!matchingEv) {
+      matchingEv = c.evidences?.[0];
+    }
+
     setActivePreview({
       imagePath: matchingEv?.storage_path,
-      surfaceName: matchingEv?.surface_type || 'Package Panel',
-      title: chk.rule_title || 'Declaration Finding',
+      surfaceName: surfaceName || matchingEv?.surface_type || 'Package Panel',
+      title: chk.expected_condition || chk.rule_title || 'Declaration Finding',
       detectedText: chk.evaluated_value,
-      bbox: chk.bbox
+      bbox: bbox
     });
   };
 
@@ -154,7 +182,7 @@ export const Step3AiAnalysis: React.FC<Step3AiAnalysisProps> = ({
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-xs text-[#1E293B]">
-                          {chk.rule_title || chk.rule_code || 'Statutory Requirement'}
+                          {chk.expected_condition || chk.rule_title || chk.rule_code || 'Statutory Requirement'}
                         </span>
                         <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${
                           isFail
@@ -238,7 +266,7 @@ export const Step3AiAnalysis: React.FC<Step3AiAnalysisProps> = ({
               >
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-xs text-[#1E293B]">{chk.rule_title || chk.rule_code}</span>
+                    <span className="font-bold text-xs text-[#1E293B]">{chk.expected_condition || chk.rule_title || chk.rule_code}</span>
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#F0FDF4] text-[#15803D] border border-[#DCFCE7]">
                       Correct
                     </span>
