@@ -8,7 +8,8 @@ from models import (
     AuditLog, CaseStatus, InspectorReviewAction, SeniorReviewAction,
     FinalDisposition, AuditActionType, Violation, Product, Manufacturer,
     VerificationStatus, DeclarationFieldType, SystemicPattern, PatternStatus,
-    Plant, User, PackageEvidence, SurfaceType
+    Plant, User, PackageEvidence, SurfaceType, ComplianceCheck, CheckStatus,
+    SeniorDecision, ViolationSeverity
 )
 from services.auth_service import require_auth, require_role, check_case_access
 from services.systemic_intelligence_service import SystemicIntelligenceService
@@ -357,8 +358,36 @@ def itemized_violation_action(case_id, violation_id):
         return jsonify({"error": "Statutory justification or override reason is mandatory when altering a finding."}), 400
 
     prev_decision = viol.senior_decision
-    viol.senior_decision = action_str
+    try:
+        viol.senior_decision = SeniorDecision(action_str)
+    except Exception:
+        viol.senior_decision = SeniorDecision.UPHELD
     viol.senior_override_reason = f"{override_reason} | {statutory_just}".strip(" |")
+
+    # If action is OVERRIDDEN or DISMISSED, also update the related ComplianceCheck to PASS
+    if action_str in ["OVERRIDDEN", "DISMISSED"]:
+        chk = None
+        if viol.check_id:
+            chk = db.session.get(ComplianceCheck, viol.check_id)
+        if not chk and viol.rule_code:
+            chk = ComplianceCheck.query.filter_by(case_id=case.id, rule_code=viol.rule_code).first()
+        if chk and chk.status != CheckStatus.PASS:
+            chk.status = CheckStatus.PASS
+            chk.reason_explanation = f"[Senior {action_str}]: {viol.senior_override_reason} | {chk.reason_explanation}"
+
+            # Recalculate case metrics
+            db.session.flush()
+            passed_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.PASS).count()
+            failed_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.FAIL).count()
+            review_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.REVIEW_REQUIRED).count()
+            na_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.NOT_APPLICABLE).count()
+            applicable_c = passed_c + failed_c + review_c
+            case.passed_checks = passed_c
+            case.failed_checks = failed_c
+            case.review_required_checks = review_c
+            case.not_applicable_checks = na_c
+            case.compliance_score = round((passed_c / max(applicable_c, 1)) * 100.0, 1)
+            case.score_breakdown_text = f"{passed_c} Passed / {applicable_c} Applicable × 100 = {case.compliance_score}% ({review_c} Review Required)"
 
     audit = AuditLog(
         case_id=case.id,
@@ -366,7 +395,7 @@ def itemized_violation_action(case_id, violation_id):
         action_type=AuditActionType.SENIOR_OVERRIDE if action_str in ["OVERRIDDEN", "DISMISSED"] else AuditActionType.CASE_FINALIZED,
         entity_name="Violation",
         entity_id=str(viol.id),
-        previous_state_json=json.dumps({"decision": prev_decision}),
+        previous_state_json=json.dumps({"decision": prev_decision.value if hasattr(prev_decision, "value") else str(prev_decision)}),
         new_state_json=json.dumps({"decision": action_str, "reason": viol.senior_override_reason}),
         justification=viol.senior_override_reason or f"Senior Officer itemized adjudication: {action_str}."
     )
@@ -375,7 +404,115 @@ def itemized_violation_action(case_id, violation_id):
 
     return jsonify({
         "message": f"Violation #{viol.id} decision updated to {action_str}.",
-        "violation": viol.to_dict()
+        "violation": viol.to_dict(),
+        "case": case.to_dict()
+    })
+
+@reviews_bp.route("/<int:case_id>/checks/<int:check_id>/action", methods=["POST"])
+@require_role(["SENIOR_OFFICER", "ADMIN"])
+def itemized_check_action(case_id, check_id):
+    """Senior Officer itemized review of an individual compliance check."""
+    case = db.session.get(InspectionCase, case_id)
+    if not case:
+        return jsonify({"error": "Case not found."}), 404
+
+    chk = ComplianceCheck.query.filter_by(id=check_id, case_id=case.id).first_or_404()
+
+    data = request.get_json() or {}
+    action_str = data.get("action", "").upper() # CONFIRMED, OVERRIDDEN, DISMISSED
+    override_reason = (data.get("override_reason") or "").strip()
+    statutory_just = (data.get("statutory_justification") or "").strip()
+    justification_text = f"{override_reason} | {statutory_just}".strip(" |")
+
+    if not action_str:
+        return jsonify({"error": "Action is required (CONFIRMED, OVERRIDDEN, DISMISSED)."}), 400
+
+    if action_str in ["OVERRIDDEN", "DISMISSED"] and not justification_text:
+        return jsonify({"error": "Statutory justification or override reason is mandatory when altering a finding."}), 400
+
+    prev_status = chk.status.value
+
+    # Find any related violation for this check
+    chk_code = chk.rule.rule_code if chk.rule else ""
+    related_viols = Violation.query.filter(
+        (Violation.case_id == case.id) &
+        ((Violation.check_id == chk.id) | (Violation.rule_code == chk_code))
+    ).all()
+
+    if action_str == "CONFIRMED":
+        for v in related_viols:
+            try:
+                v.senior_decision = SeniorDecision.CONFIRMED
+            except Exception:
+                v.senior_decision = SeniorDecision.UPHELD
+            if justification_text:
+                v.senior_override_reason = justification_text
+    elif action_str == "OVERRIDDEN":
+        if chk.status in [CheckStatus.FAIL, CheckStatus.REVIEW_REQUIRED]:
+            chk.status = CheckStatus.PASS
+            chk.reason_explanation = f"[Senior Override to Compliant]: {justification_text} | {chk.reason_explanation}"
+            for v in related_viols:
+                try:
+                    v.senior_decision = SeniorDecision.OVERRIDDEN
+                except Exception:
+                    v.senior_decision = SeniorDecision.DISMISSED
+                v.senior_override_reason = justification_text
+        else:
+            chk.status = CheckStatus.FAIL
+            chk.reason_explanation = f"[Senior Override to Non-Compliant]: {justification_text} | {chk.reason_explanation}"
+            if not related_viols:
+                new_v = Violation(
+                    case_id=case.id,
+                    check_id=chk.id,
+                    rule_code=chk_code or "RULE_6",
+                    violation_title=f"Non-Compliance Finding: {chk.expected_condition or (chk.rule.title if chk.rule else 'Statutory Rule')}",
+                    description=justification_text,
+                    severity=ViolationSeverity.HIGH,
+                    senior_decision=SeniorDecision.UPHELD,
+                    senior_override_reason=justification_text,
+                    evidence_image_id=chk.evidence_id
+                )
+                db.session.add(new_v)
+    elif action_str == "DISMISSED":
+        chk.status = CheckStatus.PASS
+        chk.reason_explanation = f"[Senior Dismissed as Non-Issue]: {justification_text or 'De minimis / non-statutory variation'} | {chk.reason_explanation}"
+        for v in related_viols:
+            v.senior_decision = SeniorDecision.DISMISSED
+            v.senior_override_reason = justification_text or "Dismissed by Senior Officer"
+
+    # Recalculate case compliance counts & score
+    db.session.flush()
+    passed_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.PASS).count()
+    failed_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.FAIL).count()
+    review_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.REVIEW_REQUIRED).count()
+    na_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.NOT_APPLICABLE).count()
+    applicable_c = passed_c + failed_c + review_c
+
+    case.passed_checks = passed_c
+    case.failed_checks = failed_c
+    case.review_required_checks = review_c
+    case.not_applicable_checks = na_c
+    case.compliance_score = round((passed_c / max(applicable_c, 1)) * 100.0, 1)
+    case.score_breakdown_text = f"{passed_c} Passed / {applicable_c} Applicable × 100 = {case.compliance_score}% ({review_c} Review Required)"
+
+    # Audit log
+    audit = AuditLog(
+        case_id=case.id,
+        user_id=g.current_user.id,
+        action_type=AuditActionType.SENIOR_OVERRIDE if action_str in ["OVERRIDDEN", "DISMISSED"] else AuditActionType.CASE_FINALIZED,
+        entity_name="ComplianceCheck",
+        entity_id=str(chk.id),
+        previous_state_json=json.dumps({"status": prev_status}),
+        new_state_json=json.dumps({"status": chk.status.value, "decision": action_str, "reason": justification_text}),
+        justification=justification_text or f"Senior Officer adjudication on check #{chk.id}: {action_str}."
+    )
+    db.session.add(audit)
+    db.session.commit()
+
+    return jsonify({
+        "message": f"Check #{chk.id} decision updated to {action_str}.",
+        "check": chk.to_dict(),
+        "case": case.to_dict()
     })
 
 @reviews_bp.route("/<int:case_id>/return", methods=["POST"])

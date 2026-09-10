@@ -98,6 +98,8 @@ export const api = {
     apiFetch<any>(`/api/reviews/${caseId}/finalize`, { method: "POST", body: JSON.stringify(data) }),
   submitViolationAction: (caseId: number, violationId: number, data: { action: string; override_reason?: string; statutory_justification?: string }) =>
     apiFetch<any>(`/api/reviews/${caseId}/violations/${violationId}/action`, { method: "POST", body: JSON.stringify(data) }),
+  submitCheckAction: (caseId: number, checkId: number, data: { action: string; override_reason?: string; statutory_justification?: string }) =>
+    apiFetch<any>(`/api/reviews/${caseId}/checks/${checkId}/action`, { method: "POST", body: JSON.stringify(data) }),
 
   // Innovation #5: Brand-Wide & Systemic Violation Intelligence
   getSystemicPatterns: (status = "ALL") => {

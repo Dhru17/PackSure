@@ -37,10 +37,10 @@ export const FindingDetailsDrawer: React.FC<FindingDetailsDrawerProps> = ({
 
   if (!isOpen || (!check && !violation)) return null;
 
-  const title = violation?.violation_title || check?.rule_title || 'Statutory Requirement Finding';
-  const ruleCode = violation?.rule_code || check?.rule_code || 'RULE';
+  const title = check?.expected_condition || violation?.violation_title || check?.rule_title || 'Statutory Requirement Finding';
+  const ruleCode = check?.rule_code || violation?.rule_code || 'RULE';
   const citation = check?.statutory_citation || 'Legal Metrology (Packaged Commodities) Rules, 2011';
-  const explanation = violation?.description || check?.reason_explanation || 'Evaluation completed against packaging declaration.';
+  const explanation = check?.reason_explanation || violation?.description || 'Evaluation completed against packaging declaration.';
   const status = check?.status || (violation ? 'FAIL' : 'PASS');
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,9 +77,11 @@ export const FindingDetailsDrawer: React.FC<FindingDetailsDrawerProps> = ({
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                   status === 'PASS' 
                     ? 'bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0]' 
+                    : status === 'REVIEW_REQUIRED'
+                    ? 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]'
                     : 'bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]'
                 }`}>
-                  {status === 'PASS' ? 'COMPLIANT' : 'NON-COMPLIANT'}
+                  {status === 'PASS' ? 'COMPLIANT' : status === 'REVIEW_REQUIRED' ? 'REVIEW REQUIRED' : 'NON-COMPLIANT'}
                 </span>
               </div>
               <h2 className="text-sm font-bold text-[#1E293B] mt-1">{title}</h2>
@@ -106,7 +108,7 @@ export const FindingDetailsDrawer: React.FC<FindingDetailsDrawerProps> = ({
           </div>
 
           {/* Extracted & Verified Values */}
-          {declaration && (
+          {(declaration || check?.evaluated_value) && (
             <div className="bg-white border border-[#D8DDE3] rounded-xl p-4 space-y-3">
               <div className="text-[10px] text-[#475569] font-bold uppercase tracking-wider">
                 Extracted Packaging Declaration
@@ -114,19 +116,19 @@ export const FindingDetailsDrawer: React.FC<FindingDetailsDrawerProps> = ({
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="bg-[#F8F9FA] p-2.5 rounded-lg border border-[#E2E8F0]">
                   <span className="text-[10px] text-[#64748B] block font-bold">Field / Title</span>
-                  <span className="font-bold text-[#1E293B]">{declaration.title}</span>
+                  <span className="font-bold text-[#1E293B]">{declaration?.title || title}</span>
                 </div>
                 <div className="bg-[#F8F9FA] p-2.5 rounded-lg border border-[#E2E8F0]">
-                  <span className="text-[10px] text-[#64748B] block font-bold">OCR Value</span>
-                  <span className="font-mono text-[#1E293B]">{declaration.extracted_value || 'None'}</span>
+                  <span className="text-[10px] text-[#64748B] block font-bold">Detected Value</span>
+                  <span className="font-mono text-[#1E293B]">{declaration?.extracted_value || check?.evaluated_value || 'None'}</span>
                 </div>
-                {declaration.font_height_mm && (
+                {declaration?.font_height_mm && (
                   <div className="bg-[#F8F9FA] p-2.5 rounded-lg border border-[#E2E8F0] col-span-2">
                     <span className="text-[10px] text-[#64748B] block font-bold">Measured Height</span>
                     <span className="font-mono font-bold text-[#174A7E]">{declaration.font_height_mm.toFixed(1)} mm</span>
                   </div>
                 )}
-                {declaration.inspector_corrected_value && (
+                {declaration?.inspector_corrected_value && (
                   <div className="bg-[#FEF3C7] p-2.5 rounded-lg border border-[#FDE68A] col-span-2">
                     <span className="text-[10px] text-[#B45309] block font-bold">Inspector Verified Value</span>
                     <span className="font-mono font-bold text-[#92400E]">{declaration.inspector_corrected_value}</span>

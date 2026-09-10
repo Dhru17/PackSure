@@ -76,14 +76,20 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
     if (!selectedViolationForDrawer && !selectedCheckForDrawer) return;
     setIsProcessingAction(true);
     try {
-      if (selectedViolationForDrawer) {
+      if (selectedCheckForDrawer) {
+        await api.submitCheckAction(currentCase.id, selectedCheckForDrawer.id, {
+          action,
+          override_reason: remarks || undefined
+        });
+      } else if (selectedViolationForDrawer) {
         await api.submitViolationAction(currentCase.id, selectedViolationForDrawer.id, {
           action,
           override_reason: remarks || undefined
         });
       }
-      setActionNotice(`Finding status updated to: ${action}`);
+      setActionNotice(`Finding adjudication saved: ${action}`);
       await refreshCase();
+      setIsFindingDrawerOpen(false);
     } catch (err: any) {
       alert(`Action failed: ${err.message}`);
     } finally {
@@ -545,7 +551,7 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
                       <div>
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="font-mono text-xs font-bold text-[#1E293B]">{check.rule_code}</span>
-                          <span className="text-xs font-semibold text-[#334155]">&bull; {check.rule_title}</span>
+                          <span className="text-xs font-semibold text-[#334155]">&bull; {check.expected_condition || check.rule_title}</span>
                         </div>
                         <p className="text-xs text-[#475569] mt-0.5">{check.reason_explanation}</p>
                         <p className="text-[10px] text-[#64748B] mt-0.5">Citation: <strong>{check.statutory_citation}</strong></p>
@@ -776,7 +782,11 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
         onClose={() => setIsFindingDrawerOpen(false)}
         check={selectedCheckForDrawer}
         violation={selectedViolationForDrawer}
-        declaration={currentCase.declarations?.find(d => d.title.toLowerCase().includes((selectedCheckForDrawer?.rule_title || '').toLowerCase()))}
+        declaration={currentCase.declarations?.find(d => 
+          (selectedCheckForDrawer?.evaluated_value && d.extracted_value === selectedCheckForDrawer.evaluated_value) ||
+          (selectedCheckForDrawer?.expected_condition && d.title.toLowerCase().includes(selectedCheckForDrawer.expected_condition.toLowerCase())) ||
+          (selectedCheckForDrawer?.rule_title && d.title.toLowerCase().includes(selectedCheckForDrawer.rule_title.toLowerCase()))
+        )}
         onSaveAction={handleSaveFindingAction}
         isProcessing={isProcessingAction}
       />
