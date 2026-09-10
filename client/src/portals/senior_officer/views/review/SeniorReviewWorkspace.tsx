@@ -76,13 +76,13 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
     if (!selectedViolationForDrawer && !selectedCheckForDrawer) return;
     setIsProcessingAction(true);
     try {
-      if (selectedCheckForDrawer) {
-        await api.submitCheckAction(currentCase.id, selectedCheckForDrawer.id, {
+      if (selectedViolationForDrawer) {
+        await api.submitViolationAction(currentCase.id, selectedViolationForDrawer.id, {
           action,
           override_reason: remarks || undefined
         });
-      } else if (selectedViolationForDrawer) {
-        await api.submitViolationAction(currentCase.id, selectedViolationForDrawer.id, {
+      } else if (selectedCheckForDrawer) {
+        await api.submitCheckAction(currentCase.id, selectedCheckForDrawer.id, {
           action,
           override_reason: remarks || undefined
         });
@@ -90,6 +90,8 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
       setActionNotice(`Finding adjudication saved: ${action}`);
       await refreshCase();
       setIsFindingDrawerOpen(false);
+      setSelectedViolationForDrawer(null);
+      setSelectedCheckForDrawer(null);
     } catch (err: any) {
       alert(`Action failed: ${err.message}`);
     } finally {
@@ -100,7 +102,11 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
   // Open Drawer for a Check or Violation
   const handleOpenFindingDrawer = (check: ComplianceCheck) => {
     setSelectedCheckForDrawer(check);
-    const relatedViolation = currentCase.violations?.find(v => v.rule_code === check.rule_code) || null;
+    const cleanCCode = (check.rule_code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const relatedViolation = currentCase.violations?.find(v => {
+      const cleanVCode = v.rule_code.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      return cleanVCode === cleanCCode || cleanVCode.includes(cleanCCode) || cleanCCode.includes(cleanVCode);
+    }) || null;
     setSelectedViolationForDrawer(relatedViolation);
     setIsFindingDrawerOpen(true);
   };
@@ -590,7 +596,11 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
                         type="button"
                         onClick={() => {
                           setSelectedViolationForDrawer(v);
-                          const check = currentCase.compliance_checks?.find(c => c.rule_code === v.rule_code) || null;
+                          const cleanVCode = v.rule_code.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                          const check = currentCase.compliance_checks?.find(c => {
+                            const cleanCCode = (c.rule_code || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+                            return cleanCCode === cleanVCode || cleanCCode.includes(cleanVCode) || cleanVCode.includes(cleanCCode);
+                          }) || null;
                           setSelectedCheckForDrawer(check);
                           setIsFindingDrawerOpen(true);
                         }}
@@ -779,7 +789,11 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
       {/* Drawer: Individual Finding Details & Adjudication */}
       <FindingDetailsDrawer
         isOpen={isFindingDrawerOpen}
-        onClose={() => setIsFindingDrawerOpen(false)}
+        onClose={() => {
+          setIsFindingDrawerOpen(false);
+          setSelectedCheckForDrawer(null);
+          setSelectedViolationForDrawer(null);
+        }}
         check={selectedCheckForDrawer}
         violation={selectedViolationForDrawer}
         declaration={currentCase.declarations?.find(d => 

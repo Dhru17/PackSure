@@ -3,13 +3,14 @@ from datetime import datetime, timezone, date
 from sqlalchemy import func
 import json
 
+import re
 from models import (
     db, InspectionCase, Declaration, InspectorReview, SeniorReview,
     AuditLog, CaseStatus, InspectorReviewAction, SeniorReviewAction,
     FinalDisposition, AuditActionType, Violation, Product, Manufacturer,
     VerificationStatus, DeclarationFieldType, SystemicPattern, PatternStatus,
     Plant, User, PackageEvidence, SurfaceType, ComplianceCheck, CheckStatus,
-    SeniorDecision, ViolationSeverity
+    SeniorDecision, ViolationSeverity, RegulatoryRule
 )
 from services.auth_service import require_auth, require_role, check_case_access
 from services.systemic_intelligence_service import SystemicIntelligenceService
@@ -364,18 +365,45 @@ def itemized_violation_action(case_id, violation_id):
         viol.senior_decision = SeniorDecision.UPHELD
     viol.senior_override_reason = f"{override_reason} | {statutory_just}".strip(" |")
 
+    # Link check and update status
+    chk = None
+    if viol.check_id:
+        chk = db.session.get(ComplianceCheck, viol.check_id)
+    if not chk and viol.rule_code:
+        clean_v_code = re.sub(r'[^A-Za-z0-9]', '_', viol.rule_code).strip('_').upper()
+        chk = ComplianceCheck.query.join(RegulatoryRule, ComplianceCheck.rule_id == RegulatoryRule.id).filter(
+            ComplianceCheck.case_id == case.id,
+            (RegulatoryRule.rule_code == viol.rule_code) | 
+            (RegulatoryRule.rule_code == clean_v_code) |
+            (RegulatoryRule.rule_code.ilike(f"%{clean_v_code[:8]}%"))
+        ).first()
+
+    if chk and not viol.check_id:
+        viol.check_id = chk.id
+
     # If action is OVERRIDDEN or DISMISSED, also update the related ComplianceCheck to PASS
     if action_str in ["OVERRIDDEN", "DISMISSED"]:
-        chk = None
-        if viol.check_id:
-            chk = db.session.get(ComplianceCheck, viol.check_id)
-        if not chk and viol.rule_code:
-            chk = ComplianceCheck.query.filter_by(case_id=case.id, rule_code=viol.rule_code).first()
         if chk and chk.status != CheckStatus.PASS:
             chk.status = CheckStatus.PASS
             chk.reason_explanation = f"[Senior {action_str}]: {viol.senior_override_reason} | {chk.reason_explanation}"
 
             # Recalculate case metrics
+            db.session.flush()
+            passed_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.PASS).count()
+            failed_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.FAIL).count()
+            review_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.REVIEW_REQUIRED).count()
+            na_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.NOT_APPLICABLE).count()
+            applicable_c = passed_c + failed_c + review_c
+            case.passed_checks = passed_c
+            case.failed_checks = failed_c
+            case.review_required_checks = review_c
+            case.not_applicable_checks = na_c
+            case.compliance_score = round((passed_c / max(applicable_c, 1)) * 100.0, 1)
+            case.score_breakdown_text = f"{passed_c} Passed / {applicable_c} Applicable × 100 = {case.compliance_score}% ({review_c} Review Required)"
+    elif action_str == "CONFIRMED":
+        if chk and chk.status == CheckStatus.REVIEW_REQUIRED:
+            chk.status = CheckStatus.FAIL
+            chk.reason_explanation = f"[Senior Confirmed Non-Compliance]: {viol.senior_override_reason or 'Upheld by senior officer'} | {chk.reason_explanation}"
             db.session.flush()
             passed_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.PASS).count()
             failed_c = ComplianceCheck.query.filter_by(case_id=case.id, status=CheckStatus.FAIL).count()
@@ -434,9 +462,15 @@ def itemized_check_action(case_id, check_id):
 
     # Find any related violation for this check
     chk_code = chk.rule.rule_code if chk.rule else ""
+    clean_chk_code = re.sub(r'[^A-Za-z0-9]', '_', chk_code).strip('_').upper() if chk_code else ""
     related_viols = Violation.query.filter(
         (Violation.case_id == case.id) &
-        ((Violation.check_id == chk.id) | (Violation.rule_code == chk_code))
+        (
+            (Violation.check_id == chk.id) | 
+            (Violation.rule_code == chk_code) |
+            (Violation.rule_code.ilike(f"%{chk_code}%")) |
+            (Violation.rule_code.ilike(f"%{clean_chk_code[:8]}%"))
+        )
     ).all()
 
     if action_str == "CONFIRMED":
