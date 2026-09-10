@@ -64,13 +64,17 @@ class RegulatoryRule(db.Model):
 
     def to_dict(self, check_date: date = None):
         eff_status = self.get_effective_status(check_date)
+        applicability = self.get_applicability()
         return {
             "id": self.id,
             "rule_code": self.rule_code,
             "version": self.version,
             "title": self.title,
+            "rule_title": self.title,
             "description": self.description,
+            "rule_text": self.description,
             "statutory_citation": self.statutory_citation,
+            "section_reference": self.statutory_citation,
             "government_authority": self.government_authority,
             "notification_reference": self.notification_reference,
             "notification_date": self.notification_date.isoformat() if self.notification_date else None,
@@ -80,7 +84,13 @@ class RegulatoryRule(db.Model):
             "official_source": self.official_source,
             "source_document": self.source_document,
             "validation_logic_type": self.validation_logic_type,
-            "applicability_criteria": self.get_applicability(),
+            "applicability_criteria": applicability,
+            "what_it_is_for": applicability.get("what_it_is_for") if isinstance(applicability, dict) else None,
+            "statutory_purpose": applicability.get("statutory_purpose") if isinstance(applicability, dict) else None,
+            "enforcement_guidance": applicability.get("enforcement_guidance") if isinstance(applicability, dict) else None,
+            "interpretation_notes": applicability.get("enforcement_guidance") if isinstance(applicability, dict) else None,
+            "statutory_penalties": applicability.get("statutory_penalties") if isinstance(applicability, dict) else None,
+            "practical_examples": applicability.get("examples") if isinstance(applicability, dict) else None,
             "effective_from": self.effective_from.isoformat() if self.effective_from else None,
             "effective_to": self.effective_to.isoformat() if self.effective_to else None,
             "is_active": self.is_active,
