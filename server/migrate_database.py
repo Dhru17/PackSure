@@ -47,6 +47,24 @@ def migrate_database():
                 except Exception as e:
                     print(f"Notice adding column company_id: {e}")
 
+            # General metadata column sync for all tables
+            import sqlalchemy
+            inspector = sqlalchemy.inspect(db.engine)
+            for table_name in inspector.get_table_names():
+                db_cols = [c['name'] for c in inspector.get_columns(table_name)]
+                if table_name in db.metadata.tables:
+                    for model_col in db.metadata.tables[table_name].columns:
+                        if model_col.name not in db_cols:
+                            col_type = str(model_col.type)
+                            default_clause = ""
+                            if model_col.default is not None and not callable(model_col.default.arg):
+                                default_clause = f" DEFAULT {repr(model_col.default.arg)}"
+                            print(f"Adding column '{model_col.name}' to '{table_name}'...")
+                            try:
+                                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {model_col.name} {col_type}{default_clause};")
+                            except Exception as e:
+                                print(f"Notice adding column {table_name}.{model_col.name}: {e}")
+
             conn.commit()
             conn.close()
             print("[PASS] SQLite schema columns verified and updated.")
