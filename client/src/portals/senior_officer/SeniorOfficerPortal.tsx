@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../services/api';
 import type { InspectionCase } from '../../types';
+import { CheckCircle2, X } from 'lucide-react';
 
 // Senior Officer Components & Views
 import { SeniorSidebar, type SeniorNavTab } from './components/SeniorSidebar';
@@ -22,9 +23,15 @@ export const SeniorOfficerPortal: React.FC = () => {
   const [queue, setQueue] = useState<InspectionCase[]>([]);
   const [isLoadingQueue, setIsLoadingQueue] = useState(false);
   const [allInspections, setAllInspections] = useState<InspectionCase[]>([]);
+  const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   
   // Active case for Review Workspace
   const [selectedCaseForReview, setSelectedCaseForReview] = useState<InspectionCase | null>(null);
+
+  const showNotice = (msg: string) => {
+    setNoticeMsg(msg);
+    setTimeout(() => setNoticeMsg(null), 5000);
+  };
 
   // Load Overview Data
   const loadOverview = async () => {
@@ -73,6 +80,13 @@ export const SeniorOfficerPortal: React.FC = () => {
     loadOverview();
     loadQueue();
     loadAllInspections();
+  };
+
+  const handleAuditScheduled = (newCase: any) => {
+    refreshAllData();
+    setActiveTab('upcoming');
+    const caseNum = newCase?.case_number || 'New';
+    showNotice(`Inspection audit #${caseNum} successfully scheduled and assigned to field inspector.`);
   };
 
   // Open Case in Review Workspace
@@ -130,6 +144,22 @@ export const SeniorOfficerPortal: React.FC = () => {
           unreadNotificationsCount={unreadNotificationsCount}
         />
 
+        {/* Global Notice Banner */}
+        {noticeMsg && (
+          <div className="mx-4 sm:mx-6 lg:mx-8 mt-4 p-4 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold flex items-center justify-between shadow-xs animate-in fade-in slide-in-from-top duration-200">
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              <span>{noticeMsg}</span>
+            </div>
+            <button
+              onClick={() => setNoticeMsg(null)}
+              className="text-emerald-700 hover:text-emerald-950 p-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* View Routing */}
         <div className="p-4 sm:p-6 lg:p-8 flex-1 overflow-y-auto">
           {/* SCREEN 1: DASHBOARD (HOME) */}
@@ -148,6 +178,7 @@ export const SeniorOfficerPortal: React.FC = () => {
                 loadAllInspections();
               }}
               onRefreshData={refreshAllData}
+              onAuditScheduled={handleAuditScheduled}
             />
           )}
 
@@ -155,6 +186,7 @@ export const SeniorOfficerPortal: React.FC = () => {
           {activeTab === 'upcoming' && (
             <SeniorUpcomingAuditsView
               onOpenCase={handleOpenCaseForReview}
+              onAuditScheduled={handleAuditScheduled}
             />
           )}
 
@@ -170,7 +202,9 @@ export const SeniorOfficerPortal: React.FC = () => {
 
           {/* SCREEN 4: SYSTEMIC VIOLATION INTELLIGENCE (INNOVATION #5) */}
           {activeTab === 'intelligence' && (
-            <SystemicIntelligenceView />
+            <SystemicIntelligenceView
+              onAuditScheduled={handleAuditScheduled}
+            />
           )}
 
           {/* SCREEN 5: REVIEW WORKSPACE */}

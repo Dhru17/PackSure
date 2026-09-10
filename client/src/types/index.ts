@@ -168,6 +168,10 @@ export interface PackageEvidence {
   contrast_score?: number;
   quality_verdict: 'READABLE' | 'BORDERLINE' | 'UNREADABLE';
   quality_summary?: string;
+  predicted_surface?: SurfaceType | string;
+  is_surface_mismatch?: boolean;
+  surface_mismatch_warning?: string;
+  features_detected?: string[];
   captured_at: string;
 }
 
@@ -227,20 +231,26 @@ export interface CompanyDocument {
   id: number;
   company_id: number;
   company_name?: string;
+  category_id?: number;
+  category_name?: string;
+  plant_id?: number;
+  plant_name?: string;
   document_type: string;
-  document_number: string;
+  document_number?: string;
   title: string;
   issuing_authority?: string;
   issue_date?: string;
   valid_until?: string;
-  file_path: string;
+  expiry_date?: string;
+  file_path?: string;
+  file_url?: string;
   status: 'PENDING_VERIFICATION' | 'VERIFIED' | 'REJECTED';
   verified_by_id?: number;
   verified_by_name?: string;
   verified_at?: string;
   rejection_reason?: string;
   notes?: string;
-  created_at: string;
+  created_at?: string;
 }
 
 export interface InspectionCase {
@@ -284,6 +294,14 @@ export interface InspectionCase {
   declarations?: Declaration[];
   compliance_checks?: ComplianceCheck[];
   violations?: Violation[];
+  company_documents?: CompanyDocument[];
+  required_documents?: Array<{
+    code: string;
+    title: string;
+    is_mandatory: boolean;
+    rule_citation: string;
+    description: string;
+  }>;
 }
 
 export interface RegulatoryRule {
@@ -315,6 +333,7 @@ export interface RegulatoryRule {
 export interface RegulatoryImpactResult {
   simulation_timestamp: string;
   effective_date: string;
+  ai_impact_narrative?: string;
   rule?: {
     id: number;
     rule_code: string;
@@ -337,6 +356,10 @@ export interface RegulatoryImpactResult {
     affected_products_count: number;
     total_scoped_products_count?: number;
     affected_upcoming_audits_count: number;
+    requires_reinspection_count?: number;
+    pending_verification_count?: number;
+    verified_compliant_count?: number;
+    conditionally_exempt_count?: number;
   };
   affected_categories: Array<{ id: number; category_code: string; name: string; products_count: number }>;
   affected_companies: Array<{ id: number; name: string; legal_entity_name: string; city: string; state: string; products_count: number; plants_count: number; is_importer: boolean }>;
@@ -352,8 +375,10 @@ export interface RegulatoryImpactResult {
     default_mrp: number; 
     package_type: string;
     is_imported?: boolean;
-    impact_status?: 'POTENTIALLY_AFFECTED' | 'NO_IMPACT_IDENTIFIED' | string;
+    impact_status?: 'REQUIRES_REINSPECTION' | 'PENDING_VERIFICATION' | 'VERIFIED_COMPLIANT' | 'CONDITIONALLY_EXEMPT' | string;
     reassessment_reason?: string;
+    latest_case_number?: string;
+    latest_case_status?: string;
   }>;
   affected_audits: Array<{ 
     id: number; 
@@ -364,7 +389,7 @@ export interface RegulatoryImpactResult {
     status: string; 
     impact_status?: string;
     location_name: string; 
-    created_at: string;
+    created_at?: string;
   }>;
   legal_disclaimer: string;
 }

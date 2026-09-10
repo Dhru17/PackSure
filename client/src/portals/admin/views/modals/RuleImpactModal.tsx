@@ -114,6 +114,23 @@ export const RuleImpactModal: React.FC<RuleImpactModalProps> = ({
           </div>
         </div>
 
+        {/* AI Executive Impact Summary Banner */}
+        {impactResult?.ai_impact_narrative && (
+          <div className="mx-5 mt-3 p-4 bg-gradient-to-r from-[#F0F9FF] to-[#EFF6FF] border border-[#BAE6FD] rounded-xl flex items-start gap-3 shadow-2xs">
+            <div className="p-2 bg-[#174A7E] text-white rounded-lg mt-0.5 shrink-0">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div className="space-y-1">
+              <div className="font-bold text-xs text-[#0369A1] flex items-center gap-1.5 uppercase tracking-wider">
+                <span>AI Regulatory Impact Assessment</span>
+              </div>
+              <p className="text-xs text-[#1E293B] leading-relaxed">
+                {impactResult.ai_impact_narrative}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Content Body */}
         <div className="p-5 flex-1 overflow-y-auto space-y-5">
           {isLoading ? (
@@ -161,7 +178,7 @@ export const RuleImpactModal: React.FC<RuleImpactModalProps> = ({
 
                 <div className="p-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-center">
                   <div className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                    Products
+                    In-Scope Items
                   </div>
                   <div className="text-2xl font-black text-[#7C3AED] mt-1">
                     {impactResult.summary.affected_products_count}
@@ -171,12 +188,12 @@ export const RuleImpactModal: React.FC<RuleImpactModalProps> = ({
 
                 <div className="p-3.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-center">
                   <div className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
-                    Audits
+                    Active Audits
                   </div>
                   <div className="text-2xl font-black text-[#DC2626] mt-1">
                     {impactResult.summary.affected_upcoming_audits_count}
                   </div>
-                  <div className="text-[10px] text-[#64748B] mt-0.5">Active / Upcoming</div>
+                  <div className="text-[10px] text-[#64748B] mt-0.5">Requiring Evaluation</div>
                 </div>
               </div>
 
@@ -192,7 +209,7 @@ export const RuleImpactModal: React.FC<RuleImpactModalProps> = ({
                         : 'text-[#64748B] hover:text-[#1E293B]'
                     }`}
                   >
-                    Affected Products ({impactResult.affected_products.length})
+                    Packaged Products ({impactResult.affected_products.length})
                   </button>
                   <button
                     type="button"
@@ -252,40 +269,58 @@ export const RuleImpactModal: React.FC<RuleImpactModalProps> = ({
                         <th className="p-3">Company</th>
                         <th className="p-3">Barcode</th>
                         <th className="p-3">Net Qty / MRP</th>
-                        <th className="p-3">Scope Status</th>
+                        <th className="p-3">Scope Status & Assessment</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#F1F5F9]">
                       {filteredProducts.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="p-6 text-center text-xs text-[#94A3B8]">
-                            No matching affected products found.
+                            No matching products found in category tree.
                           </td>
                         </tr>
                       ) : (
-                        filteredProducts.map((p) => (
-                          <tr key={p.id} className="hover:bg-[#F8FAFC]">
-                            <td className="p-3 font-semibold text-[#1E293B]">
-                              <div>{p.brand_name}</div>
-                              <div className="text-[11px] text-[#64748B] font-normal">{p.commodity_name}</div>
-                            </td>
-                            <td className="p-3 text-[#475569]">{p.category_name}</td>
-                            <td className="p-3 text-[#475569] font-medium">{p.company_name}</td>
-                            <td className="p-3 font-mono text-[11px] text-[#64748B]">{p.barcode || 'N/A'}</td>
-                            <td className="p-3 text-[#475569]">
-                              {p.default_net_quantity || 'N/A'} • {p.default_mrp ? `₹${p.default_mrp.toFixed(2)}` : 'N/A'}
-                            </td>
-                            <td className="p-3">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                p.impact_status === 'POTENTIALLY_AFFECTED'
-                                  ? 'bg-[#FEF3C7] text-[#92400E] border border-[#FDE68A]'
-                                  : 'bg-[#F1F5F9] text-[#64748B]'
-                              }`}>
-                                {p.impact_status || 'POTENTIALLY_AFFECTED'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
+                        filteredProducts.map((p) => {
+                          const status = p.impact_status || 'PENDING_VERIFICATION';
+                          return (
+                            <tr key={p.id} className="hover:bg-[#F8FAFC]">
+                              <td className="p-3 font-semibold text-[#1E293B]">
+                                <div>{p.brand_name}</div>
+                                <div className="text-[11px] text-[#64748B] font-normal">{p.commodity_name}</div>
+                              </td>
+                              <td className="p-3 text-[#475569]">{p.category_name}</td>
+                              <td className="p-3 text-[#475569] font-medium">{p.company_name}</td>
+                              <td className="p-3 font-mono text-[11px] text-[#64748B]">{p.barcode || 'N/A'}</td>
+                              <td className="p-3 text-[#475569]">
+                                {p.default_net_quantity || 'N/A'} • {p.default_mrp ? `₹${p.default_mrp.toFixed(2)}` : 'N/A'}
+                              </td>
+                              <td className="p-3 max-w-xs">
+                                <div>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border inline-block ${
+                                    status === 'REQUIRES_REINSPECTION'
+                                      ? 'bg-[#FEF2F2] text-[#DC2626] border-[#FECACA]'
+                                      : status === 'VERIFIED_COMPLIANT'
+                                      ? 'bg-[#F0FDF4] text-[#15803D] border-[#DCFCE7]'
+                                      : status === 'CONDITIONALLY_EXEMPT'
+                                      ? 'bg-[#F1F5F9] text-[#64748B] border-[#E2E8F0]'
+                                      : 'bg-[#FFFBEB] text-[#D97706] border-[#FEF3C7]'
+                                  }`}>
+                                    {status === 'REQUIRES_REINSPECTION'
+                                      ? '⚠ REQUIRES RE-INSPECTION'
+                                      : status === 'VERIFIED_COMPLIANT'
+                                      ? '✓ VERIFIED COMPLIANT'
+                                      : status === 'CONDITIONALLY_EXEMPT'
+                                      ? 'EXEMPT FROM SCOPE'
+                                      : 'PENDING VERIFICATION'}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-[#64748B] mt-1 leading-snug">
+                                  {p.reassessment_reason || 'Product packaging is within regulated category.'}
+                                </p>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { api } from '../../../../services/api';
 import { 
   Camera, 
   X, 
@@ -8,16 +9,20 @@ import {
   AlertCircle, 
   CheckCircle2, 
   Upload,
-  RefreshCw
+  RefreshCw,
+  FileEdit,
+  Plus
 } from 'lucide-react';
 
 interface LiveBarcodeScannerProps {
   onScanSuccess: (decodedBarcode: string) => void;
+  onManualEntry?: () => void;
   onClose: () => void;
 }
 
 export const LiveBarcodeScanner: React.FC<LiveBarcodeScannerProps> = ({
   onScanSuccess,
+  onManualEntry,
   onClose
 }) => {
   const [scannerStarted, setScannerStarted] = useState(false);
@@ -103,8 +108,15 @@ export const LiveBarcodeScanner: React.FC<LiveBarcodeScannerProps> = ({
             Html5QrcodeSupportedFormats.EAN_8,
             Html5QrcodeSupportedFormats.UPC_A,
             Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
             Html5QrcodeSupportedFormats.CODE_128,
             Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODE_93,
+            Html5QrcodeSupportedFormats.CODABAR,
+            Html5QrcodeSupportedFormats.ITF,
+            Html5QrcodeSupportedFormats.DATA_MATRIX,
+            Html5QrcodeSupportedFormats.AZTEC,
+            Html5QrcodeSupportedFormats.PDF_417,
             Html5QrcodeSupportedFormats.QR_CODE
           ],
           verbose: false
@@ -253,15 +265,51 @@ export const LiveBarcodeScanner: React.FC<LiveBarcodeScannerProps> = ({
     setErrorMsg(null);
 
     try {
-      // Create temporary instance for file scanning if needed
-      const fileScanner = new Html5Qrcode('packsure-file-barcode-temp');
-      const result = await fileScanner.scanFile(file, true);
-      fileScanner.clear();
+      // 1. First attempt in-browser scan with all formats enabled
+      let clientDecoded: string | null = null;
+      try {
+        const fileScanner = new Html5Qrcode('packsure-file-barcode-temp', {
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A,
+            Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.CODE_93,
+            Html5QrcodeSupportedFormats.CODABAR,
+            Html5QrcodeSupportedFormats.ITF,
+            Html5QrcodeSupportedFormats.DATA_MATRIX,
+            Html5QrcodeSupportedFormats.AZTEC,
+            Html5QrcodeSupportedFormats.PDF_417,
+            Html5QrcodeSupportedFormats.QR_CODE
+          ],
+          verbose: false
+        });
+        const result = await fileScanner.scanFile(file, true);
+        fileScanner.clear();
+        if (result && result.trim()) {
+          clientDecoded = result.trim();
+        }
+      } catch {
+        // Fall through to backend multi-angle scanner
+      }
 
-      if (result) {
-        handleDetected(result);
+      if (clientDecoded) {
+        handleDetected(clientDecoded);
+        return;
+      }
+
+      // 2. High-precision fallback via native C++ zxing-cpp + 4-way rotation
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.scanBarcodeImage(formData);
+
+      if (res && res.success && res.barcode) {
+        handleDetected(res.barcode);
       } else {
-        setErrorMsg('No barcode recognized in the uploaded photo. Please try a clearer picture.');
+        setErrorMsg(res.message || 'No barcode recognized in the uploaded photo. Please ensure the barcode is clear and unblurred.');
       }
     } catch (err: any) {
       setErrorMsg('No barcode recognized in the uploaded photo. Ensure the barcode is clear and unblurred.');
@@ -274,32 +322,46 @@ export const LiveBarcodeScanner: React.FC<LiveBarcodeScannerProps> = ({
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-[#0F172A] text-white rounded-3xl w-full max-w-lg overflow-hidden border border-slate-700 shadow-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30">
+        <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex-shrink-0">
               <Camera className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2 flex-wrap">
                 <span>Live Barcode Scanner</span>
                 <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
                   EAN-13 / UPC
                 </span>
               </h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Point phone or webcam camera directly at product barcode
+              <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                Point camera at barcode or add product details manually
               </p>
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
-            title="Close scanner"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (onManualEntry) onManualEntry();
+                else onClose();
+              }}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 hover:border-cyan-500/50 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5"
+              title="Add details manually"
+            >
+              <FileEdit className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Add Manually</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition cursor-pointer"
+              title="Close scanner"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Viewfinder View */}
@@ -312,7 +374,7 @@ export const LiveBarcodeScanner: React.FC<LiveBarcodeScannerProps> = ({
 
           {/* Animated Futuristic Laser & Reticle Overlay */}
           {scannerStarted && !scannedCode && (
-            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-4">
               {/* Target Frame Box */}
               <div className="relative w-[75%] max-w-[280px] h-[160px] border-2 border-dashed border-cyan-400/60 rounded-2xl shadow-[0_0_20px_rgba(6,182,212,0.25)] flex items-center justify-center">
                 {/* Corner Accents */}
@@ -332,6 +394,21 @@ export const LiveBarcodeScanner: React.FC<LiveBarcodeScannerProps> = ({
                 <span className="text-[10px] font-mono tracking-widest text-cyan-300/80 uppercase bg-black/60 px-2.5 py-1 rounded-md border border-cyan-500/30">
                   Align Barcode in Frame
                 </span>
+              </div>
+
+              {/* Floating manual fallback pill */}
+              <div className="mt-4 pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onManualEntry) onManualEntry();
+                    else onClose();
+                  }}
+                  className="px-3 py-1.5 bg-slate-950/80 hover:bg-slate-900 border border-slate-700/80 hover:border-slate-500 text-slate-300 hover:text-white rounded-full text-[11px] font-medium transition cursor-pointer backdrop-blur-sm shadow-md flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Can't scan? Add details manually</span>
+                </button>
               </div>
             </div>
           )}
@@ -358,11 +435,26 @@ export const LiveBarcodeScanner: React.FC<LiveBarcodeScannerProps> = ({
 
           {/* Error / Fallback Card */}
           {errorMsg && (
-            <div className="absolute inset-x-4 top-4 p-3 bg-red-950/90 border border-red-500/50 rounded-xl text-red-200 text-xs flex items-start gap-2.5 z-20">
-              <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <p className="font-bold text-red-100">Scanner Notice</p>
-                <p className="text-[11px] leading-relaxed text-red-300">{errorMsg}</p>
+            <div className="absolute inset-x-4 top-4 p-3.5 bg-red-950/95 border border-red-500/50 rounded-xl text-red-200 text-xs flex flex-col gap-2 z-20 shadow-xl">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                <div className="space-y-1 flex-1">
+                  <p className="font-bold text-red-100">Cannot Scan Barcode</p>
+                  <p className="text-[11px] leading-relaxed text-red-300">{errorMsg}</p>
+                </div>
+              </div>
+              <div className="pt-1 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onManualEntry) onManualEntry();
+                    else onClose();
+                  }}
+                  className="px-3 py-1.5 bg-red-800/80 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <FileEdit className="w-3.5 h-3.5" />
+                  <span>New Product — Add details manually</span>
+                </button>
               </div>
             </div>
           )}
@@ -414,22 +506,37 @@ export const LiveBarcodeScanner: React.FC<LiveBarcodeScannerProps> = ({
               </button>
             )}
 
-            {/* Scan from Photo Option */}
-            <label className="ml-auto px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1.5">
-              {isFileScanning ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
-              ) : (
-                <Upload className="w-3.5 h-3.5 text-cyan-400" />
-              )}
-              <span>{isFileScanning ? 'Analyzing...' : 'Scan from Photo'}</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleFileScan}
-                disabled={isFileScanning}
-                className="hidden"
-              />
-            </label>
+            <div className="ml-auto flex items-center gap-2">
+              {/* Manual Entry Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onManualEntry) onManualEntry();
+                  else onClose();
+                }}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1.5"
+              >
+                <FileEdit className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Add Details Manually</span>
+              </button>
+
+              {/* Scan from Photo Option */}
+              <label className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold cursor-pointer transition flex items-center gap-1.5">
+                {isFileScanning ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-cyan-400" />
+                ) : (
+                  <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                )}
+                <span>{isFileScanning ? 'Analyzing...' : 'Scan from Photo'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileScan}
+                  disabled={isFileScanning}
+                  className="hidden"
+                />
+              </label>
+            </div>
           </div>
 
           <div className="text-[10px] text-slate-500 text-center flex items-center justify-center gap-1">

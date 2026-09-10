@@ -13,7 +13,9 @@ import {
   Scan,
   Upload,
   RefreshCw,
-  RotateCcw
+  RotateCcw,
+  FileEdit,
+  Plus
 } from 'lucide-react';
 import { LiveBarcodeScanner } from './LiveBarcodeScanner';
 
@@ -47,13 +49,20 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
   onContinue,
   onCancel
 }) => {
-  const [method, setMethod] = useState<'barcode' | 'image' | 'select'>('barcode');
+  const [method, setMethod] = useState<'barcode' | 'image' | 'select' | 'manual'>('barcode');
   const [productForm, setProductForm] = useState(initialProductForm);
   const [isFoundProduct, setIsFoundProduct] = useState<boolean | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [isLiveScannerOpen, setIsLiveScannerOpen] = useState(false);
   const [scannerNotice, setScannerNotice] = useState<string | null>(null);
+
+  // Trigger manual entry mode for new products
+  const handleManualProductEntry = () => {
+    setIsFoundProduct(false);
+    setScannerNotice('New product — Add details manually');
+    setMethod('manual');
+  };
 
   // Barcode Lookup with specific string or input state
   const handleBarcodeLookupWith = async (barcodeVal?: string) => {
@@ -82,11 +91,11 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
         setScannerNotice(`Product identified from catalog: ${res.product.brand_name} — ${res.product.commodity_name}`);
       } else {
         setIsFoundProduct(false);
-        setScannerNotice(`Barcode ${target} not in registered catalog. Please enter product details below.`);
+        setScannerNotice(`New product — Add details manually (Barcode: ${target})`);
       }
     } catch {
       setIsFoundProduct(false);
-      setScannerNotice(`Unable to reach catalog. Please enter product details below.`);
+      setScannerNotice(`New product — Add details manually (Barcode: ${target})`);
     } finally {
       setIsSearching(false);
     }
@@ -189,13 +198,13 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
         </p>
       </div>
 
-      {/* 3 Practical Identification Options */}
+      {/* 4 Practical Identification Options */}
       <div className="space-y-4">
         <div className="text-xs font-bold uppercase tracking-wider text-[#475569]">
           Choose Identification Method
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Method 1: Scan Barcode */}
           <button
             type="button"
@@ -235,8 +244,8 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
               {method === 'image' && <span className="w-2 h-2 rounded-full bg-[#174A7E]" />}
             </div>
             <div>
-              <div className="font-bold text-xs text-[#1E293B]">Capture Product Image</div>
-              <div className="text-[11px] text-[#64748B] mt-0.5">Capture package photo for identification</div>
+              <div className="font-bold text-xs text-[#1E293B]">Capture Image</div>
+              <div className="text-[11px] text-[#64748B] mt-0.5">AI RapidOCR extraction from photo</div>
             </div>
           </button>
 
@@ -257,8 +266,30 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
               {method === 'select' && <span className="w-2 h-2 rounded-full bg-[#174A7E]" />}
             </div>
             <div>
-              <div className="font-bold text-xs text-[#1E293B]">Select Existing Product</div>
-              <div className="text-[11px] text-[#64748B] mt-0.5">Choose from registered catalog database</div>
+              <div className="font-bold text-xs text-[#1E293B]">Select Existing</div>
+              <div className="text-[11px] text-[#64748B] mt-0.5">Choose from registered database</div>
+            </div>
+          </button>
+
+          {/* Method 4: Add Manually (New Product) */}
+          <button
+            type="button"
+            onClick={handleManualProductEntry}
+            className={`p-4 rounded-xl border text-left transition-all flex flex-col justify-between space-y-2 ${
+              method === 'manual'
+                ? 'bg-[#EBF3FA] border-[#174A7E] shadow-xs'
+                : 'bg-[#F8FAFC] border-[#CBD5E1] hover:bg-white hover:border-[#94A3B8]'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <div className={`p-2 rounded-lg ${method === 'manual' ? 'bg-[#174A7E] text-white' : 'bg-white text-[#64748B] border border-[#CBD5E1]'}`}>
+                <FileEdit className="w-5 h-5" />
+              </div>
+              {method === 'manual' && <span className="w-2 h-2 rounded-full bg-[#174A7E]" />}
+            </div>
+            <div>
+              <div className="font-bold text-xs text-[#1E293B]">Add Manually</div>
+              <div className="text-[11px] text-[#64748B] mt-0.5">New product without scan</div>
             </div>
           </button>
         </div>
@@ -332,7 +363,7 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
                 </button>
               </div>
 
-              {/* Quick demo sample buttons */}
+              {/* Quick demo sample buttons and manual entry shortcut */}
               <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] text-[#64748B] font-semibold">Demo Samples:</span>
                 <button
@@ -367,6 +398,17 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
                   title="Unibic Cookies"
                 >
                   8906009076843 (Unibic)
+                </button>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-[#E2E8F0] flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={handleManualProductEntry}
+                  className="text-xs font-bold text-[#174A7E] hover:text-[#133E68] flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 text-[#174A7E]" />
+                  <span>Can't scan or new product? Add details manually</span>
                 </button>
               </div>
             </div>
@@ -524,7 +566,43 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
             </div>
           </div>
         )}
+
+        {method === 'manual' && (
+          <div className="space-y-3">
+            <div className="p-4 bg-amber-50/90 border border-amber-200 rounded-xl flex items-start gap-3 text-amber-900 shadow-2xs">
+              <Sparkles className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="text-xs font-bold text-amber-950">New Product &mdash; Add details manually</div>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Enter product commodity name, brand name, barcode, declared quantity, and MRP directly below. Once required details are provided, click "Continue to Evidence" to proceed.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Prominent Alert Banner when Barcode / Product is New or Unregistered */}
+      {(isFoundProduct === false || method === 'manual') && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-100 border border-amber-300 text-amber-700">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="font-bold text-amber-950 text-xs">New Product &mdash; Add details manually</div>
+              <p className="text-[11px] text-amber-800 mt-0.5">
+                {barcodeInput.trim() 
+                  ? `Barcode '${barcodeInput}' is not registered in the catalog. Enter specifications below to continue.`
+                  : 'Enter commodity name, brand, quantity, and dimensions below to proceed.'}
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-1 rounded bg-amber-200 text-amber-900 flex-shrink-0">
+            Manual Entry
+          </span>
+        </div>
+      )}
 
       {/* Product Information Card (Editable) */}
       <div className="bg-[#F8FAFC] rounded-xl border border-[#D8DDE3] p-6 space-y-5">
@@ -540,8 +618,8 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
               </span>
             )}
             {isFoundProduct === false && (
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#EBF3FA] text-[#174A7E] border border-[#CBD5E1] flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5" />
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                 <span>New product</span>
               </span>
             )}
@@ -699,6 +777,10 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
             setIsLiveScannerOpen(false);
             setBarcodeInput(scannedCode);
             handleBarcodeLookupWith(scannedCode);
+          }}
+          onManualEntry={() => {
+            setIsLiveScannerOpen(false);
+            handleManualProductEntry();
           }}
           onClose={() => setIsLiveScannerOpen(false)}
         />

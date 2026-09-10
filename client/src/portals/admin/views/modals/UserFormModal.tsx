@@ -46,7 +46,7 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
       setFormData({
         full_name: '',
         email: '',
-        phone_number: '+91 98765 43210',
+        phone_number: '9876543210',
         badge_number: `INS-${Math.floor(1000 + Math.random() * 9000)}`,
         role: 'INSPECTOR',
         jurisdiction_district: 'Ahmedabad Food & Drug Department',
@@ -62,6 +62,10 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
     e.preventDefault();
     if (!formData.full_name.trim() || !formData.email.trim()) {
       alert('Please provide Full Name and Official Email.');
+      return;
+    }
+    if (formData.phone_number && formData.phone_number.trim().length !== 10) {
+      alert('Official Phone Number must be exactly 10 digits.');
       return;
     }
     await onSave(formData);
@@ -140,14 +144,15 @@ export const UserFormModal: React.FC<UserFormModalProps> = ({
 
             <div>
               <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
-                Phone Number
+                Phone Number (10 Digits)
               </label>
               <input
                 type="text"
+                maxLength={10}
                 value={formData.phone_number}
-                onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                placeholder="+91 98765 43210"
-                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
+                onChange={(e) => setFormData({ ...formData, phone_number: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                placeholder="9876543210"
+                className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none font-mono"
               />
             </div>
 

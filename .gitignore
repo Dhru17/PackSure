@@ -47,6 +47,9 @@ server/.pytest_cache/
 **/.mypy_cache/
 .ruff_cache/
 **/.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
 .coverage
 .coverage.*
 coverage/
@@ -57,13 +60,21 @@ client/*.tsbuildinfo
 **/*.tsbuildinfo
 
 # =========================
-# 3. Environment & Secret Variables
+# 3. Environment, Secrets & Certificates
 # =========================
 .env
 .env.*
 *.env
 !.env.example
 !.env.template
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+credentials.json
+service_account.json
 
 # =========================
 # 4. Local Databases & SQLite Storage
@@ -94,6 +105,12 @@ server/data/signatures/*
 !server/data/signatures/.gitkeep
 server/data/evidences/*
 !server/data/evidences/.gitkeep
+server/data/documents/*
+!server/data/documents/.gitkeep
+server/data/exports/*
+!server/data/exports/.gitkeep
+server/data/temp/*
+!server/data/temp/.gitkeep
 server/uploads/
 server/reports/
 server/generated/
@@ -107,6 +124,8 @@ tmp/
 # 6. Logs & Debug Artifacts
 # =========================
 *.log
+logs/
+**/logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -128,25 +147,44 @@ client/.vite/
 **/.vite/
 *.local
 .eslintcache
+.oxlint_cache/
 .turbo/
 .rollup.cache/
+.parcel-cache/
+.pnpm-store/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
 
 # =========================
-# 8. IDE, Editors & History
+# 8. IDE, Editors & AI Metadata
 # =========================
 .vscode/*
 !.vscode/extensions.json
 !.vscode/launch.json
 .idea/
+**/.idea/
 *.swp
 *.swo
+*.sw?
 *~
 *.bak
 *.orig
 *.rej
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.user
+*.userosscache
+*.sln.docstates
 .history/
 *.sublime-project
 *.sublime-workspace
+.claude/
+.gemini/
+.antigravity/
 
 # =========================
 # 9. OS Metadata Artifacts
@@ -161,3 +199,4 @@ Thumbs.db
 Thumbs.db:encryptable
 desktop.ini
 $RECYCLE.BIN/
+*.lnk

@@ -54,9 +54,15 @@ export const CompanyProfileView: React.FC<CompanyProfileViewProps> = ({ onNaviga
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
     setErrorMsg(null);
     setSuccessMsg(null);
+
+    if (contactPhone && contactPhone.trim().length !== 10) {
+      setErrorMsg('Contact Phone must be exactly 10 digits.');
+      return;
+    }
+
+    setIsSaving(true);
 
     try {
       await api.updateCompanyProfile({
@@ -245,14 +251,15 @@ export const CompanyProfileView: React.FC<CompanyProfileViewProps> = ({ onNaviga
 
           <div>
             <label className="block font-bold text-[#1E293B] uppercase tracking-wider text-[10px] mb-1">
-              Customer Care / Regulatory Helpline Phone
+              Customer Care / Regulatory Helpline Phone (10 Digits)
             </label>
             <input
               type="text"
+              maxLength={10}
               value={contactPhone}
-              onChange={(e) => setContactPhone(e.target.value)}
-              placeholder="e.g. 1800-425-4449"
-              className="w-full px-3.5 py-2.5 bg-white border border-[#CBD5E1] rounded-xl text-xs text-[#1E293B] focus:border-[#174A7E]"
+              onChange={(e) => setContactPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+              placeholder="9876543210"
+              className="w-full px-3.5 py-2.5 bg-white border border-[#CBD5E1] rounded-xl text-xs text-[#1E293B] focus:border-[#174A7E] font-mono"
             />
           </div>
         </div>

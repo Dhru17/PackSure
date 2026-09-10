@@ -10,8 +10,11 @@ import {
   XCircle, 
   Package, 
   PlayCircle,
-  FileCheck2
+  FileCheck2,
+  ShieldCheck,
+  ExternalLink
 } from 'lucide-react';
+import { api } from '../../../services/api';
 
 interface InspectionDetailViewProps {
   inspectionCase: InspectionCase;
@@ -279,6 +282,94 @@ export const InspectionDetailView: React.FC<InspectionDetailViewProps> = ({
                       </td>
                       <td className="px-6 py-3.5 text-[#64748B] font-mono text-[11px]">
                         {chk.statutory_citation || chk.rule_code || 'LMPC 2011'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Statutory Enterprise Documents & Certifications Card */}
+      {c.company_documents && c.company_documents.length > 0 && (
+        <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs overflow-hidden">
+          <div className="px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between">
+            <h2 className="text-sm font-bold text-[#1E293B] uppercase tracking-wide flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[#174A7E]" />
+              <span>Statutory Enterprise Documents & Certifications</span>
+            </h2>
+            <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#475569]">
+              {c.company_documents.filter(d => d.status === 'VERIFIED').length} / {c.company_documents.length} Verified
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-[#1E293B]">
+              <thead className="bg-[#F8FAFC] text-[#64748B] font-bold uppercase tracking-wider border-b border-[#E2E8F0] text-[11px]">
+                <tr>
+                  <th className="px-6 py-3">Certificate / License Type</th>
+                  <th className="px-6 py-3">Document Number</th>
+                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-3">Verification Details</th>
+                  <th className="px-6 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#E2E8F0]">
+                {c.company_documents.map((doc) => {
+                  const isVerified = doc.status === 'VERIFIED';
+                  const isRejected = doc.status === 'REJECTED';
+
+                  return (
+                    <tr key={doc.id} className="hover:bg-[#F8FAFC] transition-colors">
+                      <td className="px-6 py-3.5 font-bold text-[#1E293B]">
+                        <div>{doc.title || doc.document_type.replace(/_/g, ' ')}</div>
+                        {doc.notes && <div className="text-[11px] text-[#64748B] font-normal italic">{doc.notes}</div>}
+                      </td>
+                      <td className="px-6 py-3.5 font-mono text-[#1E293B] font-medium">
+                        {doc.document_number || '—'}
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold ${
+                            isVerified
+                              ? 'bg-[#F0FDF4] text-[#15803D] border border-[#DCFCE7]'
+                              : isRejected
+                              ? 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]'
+                              : 'bg-[#FFFBEB] text-[#D97706] border border-[#FEF3C7]'
+                          }`}
+                        >
+                          {isVerified && <CheckCircle2 className="w-3.5 h-3.5" />}
+                          {isRejected && <XCircle className="w-3.5 h-3.5" />}
+                          {!isVerified && !isRejected && <AlertTriangle className="w-3.5 h-3.5" />}
+                          <span>{isVerified ? 'Verified' : isRejected ? 'Discrepancy' : 'Pending Verification'}</span>
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5 text-xs text-[#64748B]">
+                        {isVerified ? (
+                          <span className="text-[#15803D] font-medium">
+                            Verified {doc.verified_by_name ? `by ${doc.verified_by_name}` : ''}
+                          </span>
+                        ) : isRejected ? (
+                          <span className="text-[#DC2626] font-medium">
+                            Discrepancy: {doc.rejection_reason || 'Rejected by Officer'}
+                          </span>
+                        ) : (
+                          <span>Pending field officer review</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3.5 text-right">
+                        {doc.file_url && (
+                          <a
+                            href={doc.file_url.startsWith('http') ? doc.file_url : `${api.getMediaUrl(doc.file_url)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-[#174A7E] hover:bg-[#EFF6FF] rounded-lg border border-[#BFDBFE] transition"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>View</span>
+                          </a>
+                        )}
                       </td>
                     </tr>
                   );

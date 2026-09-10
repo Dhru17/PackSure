@@ -12,7 +12,13 @@ import {
 import { api } from '../../../services/api';
 import { ScheduleAuditModal } from '../components/ScheduleAuditModal';
 
-export const SystemicIntelligenceView: React.FC = () => {
+interface SystemicIntelligenceViewProps {
+  onAuditScheduled?: (newCase: any) => void;
+}
+
+export const SystemicIntelligenceView: React.FC<SystemicIntelligenceViewProps> = ({
+  onAuditScheduled
+}) => {
   const [patterns, setPatterns] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'NEW' | 'UNDER_REVIEW' | 'CONFIRMED_PATTERN' | 'DISMISSED'>('ALL');
@@ -351,8 +357,11 @@ export const SystemicIntelligenceView: React.FC = () => {
       <ScheduleAuditModal
         isOpen={isScheduleModalOpen}
         onClose={() => setIsScheduleModalOpen(false)}
-        onSuccess={() => {
+        onSuccess={(newCase) => {
           loadPatterns();
+          if (onAuditScheduled) {
+            onAuditScheduled(newCase);
+          }
         }}
       />
     </div>

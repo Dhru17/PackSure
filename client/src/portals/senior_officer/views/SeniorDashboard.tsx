@@ -22,6 +22,7 @@ interface SeniorDashboardProps {
   onViewUpcoming?: () => void;
   onViewIntelligence?: () => void;
   onRefreshData?: () => void;
+  onAuditScheduled?: (newCase: any) => void;
 }
 
 export const SeniorDashboard: React.FC<SeniorDashboardProps> = ({
@@ -31,7 +32,8 @@ export const SeniorDashboard: React.FC<SeniorDashboardProps> = ({
   onViewHistory,
   onViewUpcoming,
   onViewIntelligence,
-  onRefreshData
+  onRefreshData,
+  onAuditScheduled
 }) => {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
@@ -298,8 +300,13 @@ export const SeniorDashboard: React.FC<SeniorDashboardProps> = ({
       <ScheduleAuditModal
         isOpen={isScheduleModalOpen}
         onClose={() => setIsScheduleModalOpen(false)}
-        onSuccess={() => {
-          if (onRefreshData) onRefreshData();
+        onSuccess={(newCase) => {
+          if (onAuditScheduled) {
+            onAuditScheduled(newCase);
+          } else {
+            if (onRefreshData) onRefreshData();
+            if (onViewUpcoming) onViewUpcoming();
+          }
         }}
       />
     </div>

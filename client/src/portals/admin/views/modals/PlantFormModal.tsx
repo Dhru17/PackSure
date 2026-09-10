@@ -82,6 +82,10 @@ export const PlantFormModal: React.FC<PlantFormModalProps> = ({
       alert('Company, Plant Code, and Plant Name are required.');
       return;
     }
+    if (formData.contact_phone && formData.contact_phone.trim().length !== 10) {
+      alert('Plant Contact Phone must be exactly 10 digits.');
+      return;
+    }
     await onSave({
       ...formData,
       company_id: Number(formData.company_id),
@@ -269,14 +273,15 @@ export const PlantFormModal: React.FC<PlantFormModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-[#475569] mb-1">
-                Plant Phone
+                Plant Phone (10 Digits)
               </label>
               <input
                 type="text"
+                maxLength={10}
                 value={formData.contact_phone}
-                onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
-                placeholder="Phone number"
-                className="w-full px-3 py-2 text-xs border border-[#CBD5E1] rounded-lg focus:outline-hidden focus:border-[#174A7E]"
+                onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                placeholder="9876543210"
+                className="w-full px-3 py-2 text-xs border border-[#CBD5E1] rounded-lg focus:outline-hidden focus:border-[#174A7E] font-mono"
               />
             </div>
           </div>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import type { InspectionCase, ComplianceCheck } from '../../../../types';
+import React, { useState, useEffect } from 'react';
+import type { InspectionCase, ComplianceCheck, CompanyDocument } from '../../../../types';
 import { api } from '../../../../services/api';
 import { EvidencePreviewModal } from './EvidencePreviewModal';
 import { 
@@ -11,9 +11,13 @@ import {
   Eye, 
   Edit3, 
   Check, 
-  X,
-  FileCheck2,
-  Scale
+  X, 
+  FileCheck2, 
+  Scale,
+  FileText,
+  ShieldCheck,
+  ExternalLink,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface Step4ComplianceProps {
@@ -44,6 +48,13 @@ export const Step4Compliance: React.FC<Step4ComplianceProps> = ({
   const [activeCorrectionField, setActiveCorrectionField] = useState<string | null>(null);
   const [dismissReasons, setDismissReasons] = useState<Record<string, string>>({});
 
+  // Company Documents verification state
+  const [documents, setDocuments] = useState<CompanyDocument[]>(c.company_documents || []);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [verifyingDocId, setVerifyingDocId] = useState<number | null>(null);
+  const [rejectionInputDocId, setRejectionInputDocId] = useState<number | null>(null);
+  const [rejectionReasonText, setRejectionReasonText] = useState('');
+
   // Physical measurements state
   const [actualNetQty, setActualNetQty] = useState(c.actual_net_quantity || c.product?.default_net_quantity || '');
   const [fontHeight, setFontHeight] = useState<string | number>(c.actual_font_height_mm || 4.0);
@@ -52,6 +63,52 @@ export const Step4Compliance: React.FC<Step4ComplianceProps> = ({
   const [measurementMethod, setMeasurementMethod] = useState(c.measurement_method || 'Standard Vernier Caliper & Calibrated Balance');
   const [calibratedScale, setCalibratedScale] = useState(c.calibrated_scale_used ?? true);
   const [measurementSaved, setMeasurementSaved] = useState(false);
+
+  useEffect(() => {
+    if (!documents || documents.length === 0) {
+      setLoadingDocs(true);
+      api.getCaseDocuments(c.id)
+        .then(res => {
+          if (res && res.documents) {
+            setDocuments(res.documents);
+          }
+        })
+        .catch(err => {
+          console.warn('Could not load case statutory documents:', err);
+        })
+        .finally(() => setLoadingDocs(false));
+    }
+  }, [c.id]);
+
+  const handleVerifyDocument = async (docId: number) => {
+    try {
+      setVerifyingDocId(docId);
+      const res = await api.verifyCaseDocument(c.id, docId, { status: 'VERIFIED' });
+      setDocuments(prev => prev.map(d => d.id === docId ? (res.document || { ...d, status: 'VERIFIED' }) : d));
+    } catch (err: any) {
+      alert(`Failed to verify document: ${err.message}`);
+    } finally {
+      setVerifyingDocId(null);
+    }
+  };
+
+  const handleRejectDocument = async (docId: number) => {
+    if (!rejectionReasonText.trim()) {
+      alert('Please enter a specific statutory discrepancy or rejection reason.');
+      return;
+    }
+    try {
+      setVerifyingDocId(docId);
+      const res = await api.verifyCaseDocument(c.id, docId, { status: 'REJECTED', rejection_reason: rejectionReasonText.trim() });
+      setDocuments(prev => prev.map(d => d.id === docId ? (res.document || { ...d, status: 'REJECTED', rejection_reason: rejectionReasonText.trim() }) : d));
+      setRejectionInputDocId(null);
+      setRejectionReasonText('');
+    } catch (err: any) {
+      alert(`Failed to reject document: ${err.message}`);
+    } finally {
+      setVerifyingDocId(null);
+    }
+  };
 
   const checks = c.compliance_checks || [];
   const declarations = c.declarations || [];
@@ -347,6 +404,251 @@ export const Step4Compliance: React.FC<Step4ComplianceProps> = ({
                 </div>
               );
             })
+          )}
+        </div>
+      </div>
+
+      {/* Step 4C: Statutory Enterprise Documents & Certifications Desk */}
+      <div className="bg-[#F8FAFC] border border-[#CBD5E1] rounded-2xl p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] pb-4">
+          <div>
+            <h3 className="text-sm font-bold text-[#1E293B] flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-[#174A7E]" />
+              <span>Statutory Enterprise Documents & Certifications Desk</span>
+            </h3>
+            <p className="text-xs text-[#64748B] mt-0.5 font-medium">
+              Verify statutory certificates, pre-market packer registrations (Rule 27), and model approvals (Section 22) submitted by the enterprise.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 bg-white border border-[#CBD5E1] text-[#1E293B] text-xs font-bold rounded-lg shadow-2xs">
+              {documents.filter(d => d.status === 'VERIFIED').length} / {documents.length} Verified
+            </span>
+          </div>
+        </div>
+
+        {/* Required Documents Guidance */}
+        {c.required_documents && c.required_documents.length > 0 && (
+          <div className="bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl p-4 space-y-2">
+            <div className="text-xs font-bold text-[#1E40AF] flex items-center gap-1.5 uppercase tracking-wider">
+              <FileSpreadsheet className="w-4 h-4 text-[#1E40AF]" />
+              <span>Statutory Document Mandates for {c.product?.commodity_name || 'Commodity'}</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+              {c.required_documents.map(req => {
+                const hasMatching = documents.some(d => 
+                  d.document_type === req.code || 
+                  (req.code === 'PACKER_REGISTRATION' && (d.document_type.includes('PACKER') || d.document_type.includes('WEIGHTS'))) ||
+                  (req.code === 'MODEL_APPROVAL_CERTIFICATE' && d.document_type.includes('MODEL')) ||
+                  (req.code === 'MANUFACTURING_LICENSE' && (d.document_type.includes('MANUFACTURING') || d.document_type.includes('FSSAI'))) ||
+                  (req.code === 'IMPORT_PERMIT' && d.document_type.includes('IMPORT'))
+                );
+
+                return (
+                  <div key={req.code} className="bg-white/80 border border-[#DBEAFE] rounded-lg p-2.5 flex items-start gap-2">
+                    {hasMatching ? (
+                      <CheckCircle2 className="w-4 h-4 text-[#15803D] flex-shrink-0 mt-0.5" />
+                    ) : req.is_mandatory ? (
+                      <AlertTriangle className="w-4 h-4 text-[#DC2626] flex-shrink-0 mt-0.5" />
+                    ) : (
+                      <FileText className="w-4 h-4 text-[#64748B] flex-shrink-0 mt-0.5" />
+                    )}
+                    <div className="space-y-0.5">
+                      <div className="font-bold text-[#1E293B] flex items-center gap-1.5">
+                        <span>{req.title}</span>
+                        {req.is_mandatory && (
+                          <span className="px-1.5 py-0.2 bg-[#FEF2F2] text-[#DC2626] text-[10px] font-bold rounded border border-[#FECACA]">
+                            Mandatory
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[#64748B]">{req.description}</p>
+                      <p className="text-[10px] font-mono text-[#1E40AF]">{req.rule_citation}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Uploaded Documents List */}
+        <div className="space-y-3">
+          <div className="text-xs font-bold uppercase tracking-wider text-[#475569]">
+            Enterprise Uploaded Certificates & Licenses ({documents.length})
+          </div>
+
+          {loadingDocs ? (
+            <div className="p-8 text-center bg-white rounded-xl border border-[#E2E8F0] text-xs text-[#64748B]">
+              Loading statutory certificates...
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="p-6 bg-white rounded-xl border border-dashed border-[#CBD5E1] text-center space-y-2">
+              <FileText className="w-8 h-8 text-[#94A3B8] mx-auto" />
+              <div className="text-xs font-bold text-[#1E293B]">No Statutory Documents Uploaded</div>
+              <p className="text-[11px] text-[#64748B] max-w-md mx-auto">
+                The registered enterprise has not submitted statutory certificates for this case. You may note this in the inspection report.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3">
+              {documents.map(doc => {
+                const isVerified = doc.status === 'VERIFIED';
+                const isRejected = doc.status === 'REJECTED';
+                const isVerifying = verifyingDocId === doc.id;
+                const isRejecting = rejectionInputDocId === doc.id;
+
+                return (
+                  <div
+                    key={doc.id}
+                    className={`bg-white rounded-xl border p-4 shadow-xs transition-all space-y-3 ${
+                      isVerified
+                        ? 'border-[#86EFAC] bg-[#F0FDF4]/40'
+                        : isRejected
+                        ? 'border-[#FECACA] bg-[#FEF2F2]/40'
+                        : 'border-[#CBD5E1]'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-sm text-[#1E293B]">
+                            {doc.title || doc.document_type.replace(/_/g, ' ')}
+                          </span>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                              isVerified
+                                ? 'bg-[#F0FDF4] text-[#15803D] border border-[#DCFCE7]'
+                                : isRejected
+                                ? 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]'
+                                : 'bg-[#FFFBEB] text-[#D97706] border border-[#FEF3C7]'
+                            }`}
+                          >
+                            {isVerified && <CheckCircle2 className="w-3 h-3" />}
+                            {isRejected && <XCircle className="w-3 h-3" />}
+                            {!isVerified && !isRejected && <AlertTriangle className="w-3 h-3" />}
+                            <span>{isVerified ? 'Verified by Officer' : isRejected ? 'Discrepancy / Rejected' : 'Pending Verification'}</span>
+                          </span>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-[#64748B]">
+                          {doc.document_number && (
+                            <span>
+                              Reg / Doc No: <strong className="text-[#1E293B] font-mono">{doc.document_number}</strong>
+                            </span>
+                          )}
+                          {doc.expiry_date && (
+                            <span>
+                              Valid Until: <strong className="text-[#1E293B]">{new Date(doc.expiry_date).toLocaleDateString('en-IN')}</strong>
+                            </span>
+                          )}
+                          {doc.company_name && (
+                            <span>
+                              Enterprise: <strong className="text-[#1E293B]">{doc.company_name}</strong>
+                            </span>
+                          )}
+                        </div>
+
+                        {doc.notes && (
+                          <p className="text-xs text-[#475569] italic">
+                            &ldquo;{doc.notes}&rdquo;
+                          </p>
+                        )}
+
+                        {isRejected && doc.rejection_reason && (
+                          <div className="p-2.5 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-xs text-[#DC2626]">
+                            <strong>Discrepancy Reason:</strong> {doc.rejection_reason}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2 self-end sm:self-start flex-shrink-0">
+                        {doc.file_url && (
+                          <a
+                            href={doc.file_url.startsWith('http') ? doc.file_url : `${api.getMediaUrl(doc.file_url)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 bg-white border border-[#CBD5E1] hover:bg-[#F8FAFC] text-[#174A7E] rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>View Cert</span>
+                          </a>
+                        )}
+
+                        <button
+                          type="button"
+                          disabled={isVerifying}
+                          onClick={() => handleVerifyDocument(doc.id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                            isVerified
+                              ? 'bg-[#15803D] text-white shadow-xs'
+                              : 'bg-[#F0FDF4] text-[#15803D] border border-[#DCFCE7] hover:bg-[#DCFCE7]'
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{isVerified ? 'Verified ✓' : 'Verify'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={isVerifying}
+                          onClick={() => {
+                            if (isRejecting) {
+                              setRejectionInputDocId(null);
+                            } else {
+                              setRejectionInputDocId(doc.id);
+                              setRejectionReasonText(doc.rejection_reason || '');
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                            isRejected
+                              ? 'bg-[#DC2626] text-white shadow-xs'
+                              : 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA] hover:bg-[#FEE2E2]'
+                          }`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>{isRejected ? 'Flagged Discrepancy' : 'Flag Discrepancy'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Rejection input box */}
+                    {isRejecting && (
+                      <div className="bg-[#FFFBEB] p-3 rounded-lg border border-[#FDE68A] space-y-2 text-xs">
+                        <label className="block font-bold text-[#92400E]">
+                          Specify Statutory Reason for Certificate Discrepancy / Rejection:
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Model approval certificate expired on 2025-12-31 or registration address mismatch"
+                          value={rejectionReasonText}
+                          onChange={(e) => setRejectionReasonText(e.target.value)}
+                          className="w-full px-3 py-2 bg-white border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:border-[#DC2626]"
+                        />
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setRejectionInputDocId(null)}
+                            className="px-3 py-1 bg-white border border-[#CBD5E1] text-[#64748B] rounded-lg font-bold"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRejectDocument(doc.id)}
+                            className="px-3 py-1 bg-[#DC2626] hover:bg-[#B91C1C] text-white rounded-lg font-bold shadow-xs"
+                          >
+                            Confirm Discrepancy
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
