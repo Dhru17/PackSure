@@ -138,14 +138,18 @@ def identify_product_image():
         if img is not None:
             bd = cv2.barcode.BarcodeDetector()
             ret = bd.detectAndDecode(img)
-            if isinstance(ret, tuple) and len(ret) >= 2:
-                ok = ret[0]
-                decoded_info = ret[1]
-                if ok and decoded_info:
-                    for b_text in decoded_info:
-                        if b_text and len(b_text.strip()) >= 8:
-                            detected_barcode = b_text.strip()
-                            break
+            if ret is not None and isinstance(ret, tuple):
+                for item in ret:
+                    if isinstance(item, str) and len(item.strip()) >= 8:
+                        detected_barcode = item.strip()
+                        break
+                    elif isinstance(item, (list, tuple)):
+                        for sub in item:
+                            if isinstance(sub, str) and len(sub.strip()) >= 8:
+                                detected_barcode = sub.strip()
+                                break
+                    if detected_barcode:
+                        break
     except Exception as e:
         print(f"Barcode detection error on {save_path}: {e}")
 

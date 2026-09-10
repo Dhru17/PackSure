@@ -521,7 +521,7 @@ class LegalMetrologyRuleEngine:
             'confidence': conf,
             'source_image': source,
             'panel_name': source,
-            'evidence_id': phone_data.get('evidence_id') or email_data.get('evidence_id') or care_data.get('evidence_id'),
+            'evidence_id': phone_data.get('evidence_id') or email_data.get('evidence_id') or addr_data.get('evidence_id'),
             'bbox': bbox,
             'why_decision': reason,
             'remarks': remarks

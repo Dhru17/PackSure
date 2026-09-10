@@ -74,6 +74,11 @@ def create_app(config_class=Config):
     def server_error(e):
         return jsonify({"error": "An internal server error occurred."}), 500
 
+    @app.errorhandler(Exception)
+    def handle_unexpected_exception(e):
+        app.logger.exception("Unhandled server exception: %s", e)
+        return jsonify({"error": getattr(e, "description", str(e))}), 500
+
     return app
 
 if __name__ == "__main__":

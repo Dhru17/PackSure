@@ -3,7 +3,7 @@ import re
 import uuid
 import json
 from datetime import datetime, timezone, date
-from flask import Blueprint, request, jsonify, g, send_from_directory
+from flask import Blueprint, request, jsonify, g, send_from_directory, current_app
 import cv2
 
 from config import Config
@@ -863,248 +863,258 @@ def run_analysis(case_id):
     if not evidences:
         return jsonify({"error": "Cannot run analysis without uploaded packaging evidence."}), 400
 
-    case.status = CaseStatus.ANALYZING
-    db.session.commit()
+    try:
+        case.status = CaseStatus.ANALYZING
+        db.session.commit()
 
-    # Clear previous AI extraction child rows (re-analysis preserves audit trail)
-    OCRDetection.query.filter_by(case_id=case.id).delete()
-    Declaration.query.filter_by(case_id=case.id).delete()
-    ComplianceCheck.query.filter_by(case_id=case.id).delete()
-    Violation.query.filter_by(case_id=case.id).delete()
-    db.session.commit()
+        # Clear previous AI extraction child rows (re-analysis preserves audit trail)
+        OCRDetection.query.filter_by(case_id=case.id).delete()
+        Declaration.query.filter_by(case_id=case.id).delete()
+        ComplianceCheck.query.filter_by(case_id=case.id).delete()
+        Violation.query.filter_by(case_id=case.id).delete()
+        db.session.commit()
 
-    # 1. Multi-Panel OCR Extraction
-    panel_inputs = []
-    for ev in evidences:
-        fname = os.path.basename(ev.storage_path)
-        full_path = os.path.join(Config.UPLOAD_FOLDER, fname)
-        panel_inputs.append({
-            "panel_name": ev.surface_type.value,
-            "image_path": full_path,
-            "evidence_id": ev.id
-        })
+        # 1. Multi-Panel OCR Extraction
+        panel_inputs = []
+        for ev in evidences:
+            fname = os.path.basename(ev.storage_path)
+            full_path = os.path.join(Config.UPLOAD_FOLDER, fname)
+            panel_inputs.append({
+                "panel_name": ev.surface_type.value,
+                "image_path": full_path,
+                "evidence_id": ev.id
+            })
 
-    package_info = {
-        "brand": case.product.brand_name if case.product else "",
-        "commodity_name": case.product.commodity_name if case.product else ""
-    }
+        package_info = {
+            "brand": case.product.brand_name if case.product else "",
+            "commodity_name": case.product.commodity_name if case.product else ""
+        }
 
-    structured, ocr_blocks, ocr_success = OCRService.extract_from_multi_panels(
-        panel_images=panel_inputs,
-        package_info=package_info
-    )
-
-    # 2. Save raw OCR detections
-    for b in ocr_blocks:
-        ev_id = next((p["evidence_id"] for p in panel_inputs if p["panel_name"] == b["panel_name"]), evidences[0].id)
-        bbox = b.get("bbox", {})
-        det = OCRDetection(
-            evidence_id=ev_id,
-            case_id=case.id,
-            raw_text=b.get("text", ""),
-            confidence=b.get("confidence", 0.0),
-            bbox_x=bbox.get("x", 0.0),
-            bbox_y=bbox.get("y", 0.0),
-            bbox_w=bbox.get("w", 0.0),
-            bbox_h=bbox.get("h", 0.0),
-            is_barcode=b.get("is_barcode", False)
+        structured, ocr_blocks, ocr_success = OCRService.extract_from_multi_panels(
+            panel_images=panel_inputs,
+            package_info=package_info
         )
-        db.session.add(det)
 
-    # 3. Rule Engine Evaluation
-    pdp_area = case.product.pdp_area_cm2 if case.product else None
-    cat_name = case.product.category.name if case.product and case.product.category else "General"
-    panels_avail = [e.surface_type.value for e in evidences]
-
-    eval_decls, violations, summary = LegalMetrologyRuleEngine.evaluate_all_declarations(
-        structured_fields=structured,
-        pdp_area_cm2=pdp_area,
-        category=cat_name,
-        panels_available=panels_avail,
-        ocr_success=ocr_success
-    )
-
-    # 4. Save Structured Declarations directly from 16-field record
-    structured_field_map = [
-        ('brand_name', DeclarationFieldType.BRAND_NAME, 'Brand Name'),
-        ('generic_commodity_name', DeclarationFieldType.GENERIC_COMMODITY, 'Generic Commodity Name'),
-        ('product_name', DeclarationFieldType.PRODUCT_NAME, 'Product Name'),
-        ('manufacturer_name', DeclarationFieldType.MANUFACTURER_NAME, 'Manufacturer Name'),
-        ('manufacturer_address', DeclarationFieldType.MANUFACTURER_ADDRESS, 'Manufacturer Address'),
-        ('packer_name', DeclarationFieldType.PACKER_NAME, 'Packer Name'),
-        ('importer_name', DeclarationFieldType.IMPORTER_NAME, 'Importer Name'),
-        ('net_quantity', DeclarationFieldType.NET_QUANTITY, 'Net Quantity'),
-        ('unit', DeclarationFieldType.UNIT, 'Measurement Unit'),
-        ('mrp', DeclarationFieldType.MRP, 'Maximum Retail Price (MRP)'),
-        ('manufacturing_or_packing_date', DeclarationFieldType.MFG_DATE, 'Date of Manufacture / Packing'),
-        ('batch_or_lot_number', DeclarationFieldType.LOT_NUMBER, 'Batch / Lot Number'),
-        ('consumer_care_phone', DeclarationFieldType.CONSUMER_CARE_PHONE, 'Consumer Care Phone'),
-        ('consumer_care_email', DeclarationFieldType.CONSUMER_CARE_EMAIL, 'Consumer Care Email'),
-        ('consumer_care_address', DeclarationFieldType.CONSUMER_CARE_ADDRESS, 'Consumer Care Address'),
-        ('country_of_origin', DeclarationFieldType.COUNTRY_OF_ORIGIN, 'Country of Origin'),
-        ('unit_sale_price', DeclarationFieldType.UNIT_SALE_PRICE, 'Unit Sale Price (USP)'),
-        ('barcode', DeclarationFieldType.BARCODE, 'Barcode / EAN'),
-        ('fssai_number', DeclarationFieldType.FSSAI_NUMBER, 'FSSAI License Number')
-    ]
-
-    saved_types = set()
-    for k, dtype, title in structured_field_map:
-        item = structured.get(k, {})
-        val = item.get('value')
-        if val:
-            ev_id = item.get("evidence_id")
-            matching_ev = next((e for e in evidences if e.id == ev_id), None) if ev_id else None
-            if not matching_ev:
-                source_panel = item.get('source_image') or item.get('image_source') or "FRONT"
-                matching_ev = next(
-                    (e for e in evidences if e.surface_type.value.upper() in str(source_panel).upper() or str(source_panel).upper() in e.surface_type.value.upper()),
-                    evidences[0]
-                )
-            bbox = item.get('bounding_box') or {}
-            decl = Declaration(
+        # 2. Save raw OCR detections
+        for b in ocr_blocks:
+            ev_id = next((p["evidence_id"] for p in panel_inputs if p["panel_name"] == b["panel_name"]), evidences[0].id)
+            bbox = b.get("bbox", {})
+            det = OCRDetection(
+                evidence_id=ev_id,
                 case_id=case.id,
-                evidence_id=matching_ev.id,
-                field_type=dtype,
-                title=title,
-                raw_ocr_text=item.get('raw_ocr_text') or str(val),
-                extracted_value=str(val),
-                confidence=item.get('confidence', 0.85),
-                bbox_x=bbox.get('x', 0.0),
-                bbox_y=bbox.get('y', 0.0),
-                bbox_w=bbox.get('w', 0.0),
-                bbox_h=bbox.get('h', 0.0),
-                extraction_method=ExtractionMethod.OCR_TOKEN_MATCHER,
-                verification_status=VerificationStatus.UNVERIFIED
+                raw_text=b.get("text", ""),
+                confidence=b.get("confidence", 0.0),
+                bbox_x=bbox.get("x", 0.0),
+                bbox_y=bbox.get("y", 0.0),
+                bbox_w=bbox.get("w", 0.0),
+                bbox_h=bbox.get("h", 0.0),
+                is_barcode=b.get("is_barcode", False)
             )
-            db.session.add(decl)
-            saved_types.add(dtype)
+            db.session.add(det)
 
-    db.session.flush()
+        # 3. Rule Engine Evaluation
+        pdp_area = case.product.pdp_area_cm2 if case.product else None
+        cat_name = case.product.category.name if case.product and case.product.category else "General"
+        panels_avail = [e.surface_type.value for e in evidences]
 
-    # 5. Save Compliance Checks & Violations against Database Rules
-    for ed in eval_decls:
-        raw_r_name = ed.get("rule_name", "RULE_6")
-        clean_code = re.sub(r'_+', '_', re.sub(r'[^A-Za-z0-9]', '_', raw_r_name.split(' - ')[0])).strip('_').upper()
-        if clean_code.startswith("RULE_6_1_C"):
-            clean_code = "RULE_6_1_C"
-        elif clean_code.startswith("RULE_7"):
-            clean_code = "RULE_7"
+        eval_decls, violations, summary = LegalMetrologyRuleEngine.evaluate_all_declarations(
+            structured_fields=structured,
+            pdp_area_cm2=pdp_area,
+            category=cat_name,
+            panels_available=panels_avail,
+            ocr_success=ocr_success
+        )
 
-        rule = RegulatoryRule.query.filter_by(rule_code=clean_code).first()
-        if not rule:
-            rule = RegulatoryRule.query.filter(RegulatoryRule.rule_code.ilike(f"%{clean_code}%")).first()
-        if not rule:
-            ed_title = ed.get("title", "")
-            if ed_title:
-                rule = RegulatoryRule.query.filter(RegulatoryRule.title.ilike(f"%{ed_title[:15]}%")).first()
-        if not rule:
-            rule = RegulatoryRule.query.first() # fallback default
+        # 4. Save Structured Declarations directly from 16-field record
+        structured_field_map = [
+            ('brand_name', DeclarationFieldType.BRAND_NAME, 'Brand Name'),
+            ('generic_commodity_name', DeclarationFieldType.GENERIC_COMMODITY, 'Generic Commodity Name'),
+            ('product_name', DeclarationFieldType.PRODUCT_NAME, 'Product Name'),
+            ('manufacturer_name', DeclarationFieldType.MANUFACTURER_NAME, 'Manufacturer Name'),
+            ('manufacturer_address', DeclarationFieldType.MANUFACTURER_ADDRESS, 'Manufacturer Address'),
+            ('packer_name', DeclarationFieldType.PACKER_NAME, 'Packer Name'),
+            ('importer_name', DeclarationFieldType.IMPORTER_NAME, 'Importer Name'),
+            ('net_quantity', DeclarationFieldType.NET_QUANTITY, 'Net Quantity'),
+            ('unit', DeclarationFieldType.UNIT, 'Measurement Unit'),
+            ('mrp', DeclarationFieldType.MRP, 'Maximum Retail Price (MRP)'),
+            ('manufacturing_or_packing_date', DeclarationFieldType.MFG_DATE, 'Date of Manufacture / Packing'),
+            ('batch_or_lot_number', DeclarationFieldType.LOT_NUMBER, 'Batch / Lot Number'),
+            ('consumer_care_phone', DeclarationFieldType.CONSUMER_CARE_PHONE, 'Consumer Care Phone'),
+            ('consumer_care_email', DeclarationFieldType.CONSUMER_CARE_EMAIL, 'Consumer Care Email'),
+            ('consumer_care_address', DeclarationFieldType.CONSUMER_CARE_ADDRESS, 'Consumer Care Address'),
+            ('country_of_origin', DeclarationFieldType.COUNTRY_OF_ORIGIN, 'Country of Origin'),
+            ('unit_sale_price', DeclarationFieldType.UNIT_SALE_PRICE, 'Unit Sale Price (USP)'),
+            ('barcode', DeclarationFieldType.BARCODE, 'Barcode / EAN'),
+            ('fssai_number', DeclarationFieldType.FSSAI_NUMBER, 'FSSAI License Number')
+        ]
 
-        matching_ev = None
-        ev_id = ed.get("evidence_id")
-        if ev_id:
-            matching_ev = next((e for e in evidences if e.id == ev_id), None)
+        saved_types = set()
+        for k, dtype, title in structured_field_map:
+            item = structured.get(k, {})
+            val = item.get('value')
+            if val:
+                ev_id = item.get("evidence_id")
+                matching_ev = next((e for e in evidences if e.id == ev_id), None) if ev_id else None
+                if not matching_ev:
+                    source_panel = item.get('source_image') or item.get('image_source') or "FRONT"
+                    matching_ev = next(
+                        (e for e in evidences if e.surface_type.value.upper() in str(source_panel).upper() or str(source_panel).upper() in e.surface_type.value.upper()),
+                        evidences[0]
+                    )
+                bbox = item.get('bounding_box') or {}
+                decl = Declaration(
+                    case_id=case.id,
+                    evidence_id=matching_ev.id,
+                    field_type=dtype,
+                    title=title,
+                    raw_ocr_text=item.get('raw_ocr_text') or str(val),
+                    extracted_value=str(val),
+                    confidence=item.get('confidence', 0.85),
+                    bbox_x=bbox.get('x', 0.0),
+                    bbox_y=bbox.get('y', 0.0),
+                    bbox_w=bbox.get('w', 0.0),
+                    bbox_h=bbox.get('h', 0.0),
+                    extraction_method=ExtractionMethod.OCR_TOKEN_MATCHER,
+                    verification_status=VerificationStatus.UNVERIFIED
+                )
+                db.session.add(decl)
+                saved_types.add(dtype)
 
-        extracted_v = ed.get("extracted_value")
-        if not matching_ev and extracted_v:
-            matching_decl = Declaration.query.filter_by(case_id=case.id, extracted_value=str(extracted_v)).first()
-            if matching_decl and matching_decl.evidence_id:
-                matching_ev = next((e for e in evidences if e.id == matching_decl.evidence_id), None)
+        db.session.flush()
 
-        if not matching_ev:
-            source_str = str(ed.get("source_image") or ed.get("panel_name") or ed.get("source_panel") or ed.get("image_source") or "").upper()
-            for ev in evidences:
-                st = ev.surface_type.value.upper()
-                if st in source_str or source_str in st:
-                    matching_ev = ev
-                    break
+        # 5. Save Compliance Checks & Violations against Database Rules
+        for ed in eval_decls:
+            raw_r_name = ed.get("rule_name", "RULE_6")
+            clean_code = re.sub(r'_+', '_', re.sub(r'[^A-Za-z0-9]', '_', raw_r_name.split(' - ')[0])).strip('_').upper()
+            if clean_code.startswith("RULE_6_1_C"):
+                clean_code = "RULE_6_1_C"
+            elif clean_code.startswith("RULE_7"):
+                clean_code = "RULE_7"
 
-        if not matching_ev:
-            matching_ev = evidences[0]
+            rule = RegulatoryRule.query.filter_by(rule_code=clean_code).first()
+            if not rule:
+                rule = RegulatoryRule.query.filter(RegulatoryRule.rule_code.ilike(f"%{clean_code}%")).first()
+            if not rule:
+                ed_title = ed.get("title", "")
+                if ed_title:
+                    rule = RegulatoryRule.query.filter(RegulatoryRule.title.ilike(f"%{ed_title[:15]}%")).first()
+            if not rule:
+                rule = RegulatoryRule.query.first() # fallback default
 
-        bbox = ed.get("bbox") or {}
-        if not bbox or (isinstance(bbox, dict) and bbox.get("w", 0) == 0):
-            if extracted_v:
+            matching_ev = None
+            ev_id = ed.get("evidence_id")
+            if ev_id:
+                matching_ev = next((e for e in evidences if e.id == ev_id), None)
+
+            extracted_v = ed.get("extracted_value")
+            if not matching_ev and extracted_v:
                 matching_decl = Declaration.query.filter_by(case_id=case.id, extracted_value=str(extracted_v)).first()
-                if matching_decl and (matching_decl.bbox_w > 0 or matching_decl.bbox_h > 0):
-                    bbox = {
-                        "x": matching_decl.bbox_x,
-                        "y": matching_decl.bbox_y,
-                        "w": matching_decl.bbox_w,
-                        "h": matching_decl.bbox_h
-                    }
+                if matching_decl and matching_decl.evidence_id:
+                    matching_ev = next((e for e in evidences if e.id == matching_decl.evidence_id), None)
 
-        status_str = ed.get("status", "PASS").replace(" ", "_").upper()
+            if not matching_ev:
+                source_str = str(ed.get("source_image") or ed.get("panel_name") or ed.get("source_panel") or ed.get("image_source") or "").upper()
+                for ev in evidences:
+                    st = ev.surface_type.value.upper()
+                    if st in source_str or source_str in st:
+                        matching_ev = ev
+                        break
+
+            if not matching_ev:
+                matching_ev = evidences[0]
+
+            bbox = ed.get("bbox") or {}
+            if not bbox or (isinstance(bbox, dict) and bbox.get("w", 0) == 0):
+                if extracted_v:
+                    matching_decl = Declaration.query.filter_by(case_id=case.id, extracted_value=str(extracted_v)).first()
+                    if matching_decl and (matching_decl.bbox_w > 0 or matching_decl.bbox_h > 0):
+                        bbox = {
+                            "x": matching_decl.bbox_x,
+                            "y": matching_decl.bbox_y,
+                            "w": matching_decl.bbox_w,
+                            "h": matching_decl.bbox_h
+                        }
+
+            status_str = ed.get("status", "PASS").replace(" ", "_").upper()
+            try:
+                chk_status = CheckStatus(status_str)
+            except ValueError:
+                chk_status = CheckStatus.PASS
+
+            chk = ComplianceCheck(
+                case_id=case.id,
+                rule_id=rule.id if rule else 1,
+                status=chk_status,
+                confidence=ed.get("confidence", 0.0),
+                reason_explanation=ed.get("why_decision") or ed.get("remarks", ""),
+                evaluated_value=ed.get("extracted_value", ""),
+                expected_condition=ed.get("title") or (rule.title if rule else ""),
+                evidence_id=matching_ev.id if matching_ev else None,
+                bbox_json=json.dumps(bbox) if bbox else None
+            )
+            db.session.add(chk)
+
+        for v in violations:
+            v_source = str(v.get("source_image") or "").upper()
+            v_ev = next(
+                (e for e in evidences if e.surface_type.value.upper() in v_source or v_source in e.surface_type.value.upper()),
+                evidences[0]
+            )
+            viol = Violation(
+                case_id=case.id,
+                rule_code=v.get("rule_number", "Rule 6"),
+                violation_title=v.get("issue") or v.get("title", "Potential Non-Compliance"),
+                description=v.get("reason_for_decision") or v.get("reason_for_failure", ""),
+                severity=ViolationSeverity.HIGH,
+                evidence_snippet=v.get("ocr_evidence", "N/A"),
+                evidence_image_id=v_ev.id if v_ev else evidences[0].id,
+                bbox_json=json.dumps(v.get("bounding_box", {})) if v.get("bounding_box") else None
+            )
+            db.session.add(viol)
+
+        # 6. Generate Annotated Bounding-Box Images for each panel
+        for ev in evidences:
+            fname = os.path.basename(ev.storage_path)
+            orig_path = os.path.join(Config.UPLOAD_FOLDER, fname)
+            ann_filename = f"ann_{fname}"
+            ann_path = os.path.join(Config.UPLOAD_FOLDER, ann_filename)
+            VisionAnalyzer.generate_annotated_image(orig_path, eval_decls, ann_path, panel_filter=ev.surface_type.value)
+            ev.annotated_storage_path = f"/api/media/uploads/{ann_filename}"
+
+        # 7. Update Case Summary & Advance State to INSPECTOR_REVIEW
+        case.status = CaseStatus.ANALYSIS_COMPLETE
+        case.compliance_score = summary.get("compliance_score", 0.0)
+        case.total_checks = summary.get("total_checks", 0)
+        case.passed_checks = summary.get("passed_checks", 0)
+        case.failed_checks = summary.get("failed_checks", 0)
+        case.review_required_checks = summary.get("review_required_checks", 0)
+        case.not_applicable_checks = summary.get("not_applicable_checks", 0)
+        case.score_breakdown_text = summary.get("formula_breakdown", "")
+
+        # Audit Log
+        audit = AuditLog(
+            case_id=case.id,
+            user_id=g.current_user.id,
+            action_type=AuditActionType.AI_ANALYSIS_EXECUTED,
+            entity_name="InspectionCase",
+            entity_id=str(case.id),
+            new_state_json=json.dumps({"status": case.status.value, "score": case.compliance_score, "violations": len(violations)}),
+            justification="Automated RapidOCR & Legal Metrology Rule Engine execution completed."
+        )
+        db.session.add(audit)
+        db.session.commit()
+
+        return jsonify({
+            "message": "AI analysis complete.",
+            "case": case.to_dict(),
+            "summary": summary
+        })
+    except Exception as e:
+        db.session.rollback()
         try:
-            chk_status = CheckStatus(status_str)
-        except ValueError:
-            chk_status = CheckStatus.PASS
-
-        chk = ComplianceCheck(
-            case_id=case.id,
-            rule_id=rule.id if rule else 1,
-            status=chk_status,
-            confidence=ed.get("confidence", 0.0),
-            reason_explanation=ed.get("why_decision") or ed.get("remarks", ""),
-            evaluated_value=ed.get("extracted_value", ""),
-            expected_condition=ed.get("title") or (rule.title if rule else ""),
-            evidence_id=matching_ev.id if matching_ev else None,
-            bbox_json=json.dumps(bbox) if bbox else None
-        )
-        db.session.add(chk)
-
-    for v in violations:
-        v_source = str(v.get("source_image") or "").upper()
-        v_ev = next(
-            (e for e in evidences if e.surface_type.value.upper() in v_source or v_source in e.surface_type.value.upper()),
-            evidences[0]
-        )
-        viol = Violation(
-            case_id=case.id,
-            rule_code=v.get("rule_number", "Rule 6"),
-            violation_title=v.get("issue") or v.get("title", "Potential Non-Compliance"),
-            description=v.get("reason_for_decision") or v.get("reason_for_failure", ""),
-            severity=ViolationSeverity.HIGH,
-            evidence_snippet=v.get("ocr_evidence", "N/A"),
-            evidence_image_id=v_ev.id if v_ev else evidences[0].id,
-            bbox_json=json.dumps(v.get("bounding_box", {})) if v.get("bounding_box") else None
-        )
-        db.session.add(viol)
-
-    # 6. Generate Annotated Bounding-Box Images for each panel
-    for ev in evidences:
-        fname = os.path.basename(ev.storage_path)
-        orig_path = os.path.join(Config.UPLOAD_FOLDER, fname)
-        ann_filename = f"ann_{fname}"
-        ann_path = os.path.join(Config.UPLOAD_FOLDER, ann_filename)
-        VisionAnalyzer.generate_annotated_image(orig_path, eval_decls, ann_path, panel_filter=ev.surface_type.value)
-        ev.annotated_storage_path = f"/api/media/uploads/{ann_filename}"
-
-    # 7. Update Case Summary & Advance State to INSPECTOR_REVIEW
-    case.status = CaseStatus.ANALYSIS_COMPLETE
-    case.compliance_score = summary.get("compliance_score", 0.0)
-    case.total_checks = summary.get("total_checks", 0)
-    case.passed_checks = summary.get("passed_checks", 0)
-    case.failed_checks = summary.get("failed_checks", 0)
-    case.review_required_checks = summary.get("review_required_checks", 0)
-    case.not_applicable_checks = summary.get("not_applicable_checks", 0)
-    case.score_breakdown_text = summary.get("formula_breakdown", "")
-
-    # Audit Log
-    audit = AuditLog(
-        case_id=case.id,
-        user_id=g.current_user.id,
-        action_type=AuditActionType.AI_ANALYSIS_EXECUTED,
-        entity_name="InspectionCase",
-        entity_id=str(case.id),
-        new_state_json=json.dumps({"status": case.status.value, "score": case.compliance_score, "violations": len(violations)}),
-        justification="Automated RapidOCR & Legal Metrology Rule Engine execution completed."
-    )
-    db.session.add(audit)
-    db.session.commit()
-
-    return jsonify({
-        "message": "AI analysis complete.",
-        "case": case.to_dict(),
-        "summary": summary
-    })
+            case.status = CaseStatus.INSPECTION_PENDING
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+        current_app.logger.error(f"Analysis error on case {case_id}: {e}", exc_info=True)
+        return jsonify({"error": f"AI Extraction failed: {str(e)}"}), 500
