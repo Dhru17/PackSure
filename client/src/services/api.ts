@@ -298,6 +298,53 @@ export const api = {
     return apiFetch<{ products: any[]; count: number; categories?: any[] }>(`/api/company/products${qs ? `?${qs}` : ""}`);
   },
   getCompanyProductDetail: (id: number) => apiFetch<any>(`/api/company/products/${id}`),
+  getCompanyRules: (search = "") => {
+    const p = search ? `?search=${encodeURIComponent(search)}` : "";
+    return apiFetch<{ rules: any[]; count: number }>(`/api/company/rules${p}`);
+  },
+
+  // Smart Priority Analytics (Pandas Aggregation)
+  getSmartPriorityAnalytics: (params?: { timeframe?: string; refresh?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.timeframe) q.append("timeframe", params.timeframe);
+    if (params?.refresh) q.append("refresh", "true");
+    const qs = q.toString();
+    return apiFetch<{
+      market_summary: {
+        total_violations: number;
+        total_inspections: number;
+        high_priority_brands_count: number;
+        top_violator_brand: string;
+        top_violated_rule: string;
+        market_compliance_rate: number;
+        tracked_brands_count: number;
+        tracked_rules_count: number;
+      };
+      brand_priority: Array<{
+        rank: number;
+        brand_name: string;
+        violations_count: number;
+        priority: 'HIGH' | 'MEDIUM' | 'LOW';
+        priority_badge: string;
+        priority_rank: number;
+        inspections_count: number;
+        compliance_rate: number;
+        top_violated_rule: string;
+      }>;
+      rule_trend: Array<{
+        rank: number;
+        rule_code: string;
+        rule_title: string;
+        statutory_citation: string;
+        times_violated: number;
+        market_share_percent: number;
+        severity: 'HIGH' | 'MEDIUM' | 'LOW';
+      }>;
+      timeframe: string;
+      generated_at: string;
+    }>(`/api/analytics/smart-priority${qs ? `?${qs}` : ""}`);
+  },
+  seedSmartPriorityDemo: () => apiFetch<any>("/api/analytics/smart-priority/seed-demo-data", { method: "POST" }),
   getCompanyDocuments: (status = "ALL") => {
     const p = status && status !== "ALL" ? `?status=${encodeURIComponent(status)}` : "";
     return apiFetch<{ documents: any[]; count: number }>(`/api/company/documents${p}`);
@@ -323,8 +370,7 @@ export const api = {
     return `${API_BASE}/api/company/reports/${caseNumberOrId}/pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
   },
   getCompanyNotifications: () => apiFetch<{ notifications: any[]; count: number; unread_count: number }>("/api/company/notifications"),
-  markCompanyNotificationRead: (notifId: number) => apiFetch<any>(`/api/company/notifications/${notifId}/read`, { method: "POST" }),
-  getCompanyRules: () => apiFetch<{ rules: any[]; count: number; categories: any[]; effective_rule_version: string }>("/api/company/rules")
+  markCompanyNotificationRead: (notifId: number) => apiFetch<any>(`/api/company/notifications/${notifId}/read`, { method: "POST" })
 };
 
 export const packsureApi = api;

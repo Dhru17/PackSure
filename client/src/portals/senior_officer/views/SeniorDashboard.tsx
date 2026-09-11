@@ -9,7 +9,8 @@ import {
   Calendar,
   Sparkles,
   Activity,
-  Plus
+  Plus,
+  Flame
 } from 'lucide-react';
 import { KpiCard, EmptyState } from '../../../components/ui';
 import { ScheduleAuditModal } from '../components/ScheduleAuditModal';
@@ -21,6 +22,7 @@ interface SeniorDashboardProps {
   onViewHistory: () => void;
   onViewUpcoming?: () => void;
   onViewIntelligence?: () => void;
+  onViewSmartPriority?: () => void;
   onRefreshData?: () => void;
   onAuditScheduled?: (newCase: any) => void;
 }
@@ -32,6 +34,7 @@ export const SeniorDashboard: React.FC<SeniorDashboardProps> = ({
   onViewHistory,
   onViewUpcoming,
   onViewIntelligence,
+  onViewSmartPriority,
   onRefreshData,
   onAuditScheduled
 }) => {
@@ -68,6 +71,15 @@ export const SeniorDashboard: React.FC<SeniorDashboardProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          {onViewSmartPriority && (
+            <button
+              onClick={onViewSmartPriority}
+              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-rose-600/20 transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <Flame className="w-4 h-4 text-amber-300" />
+              Smart Priority Radar
+            </button>
+          )}
           <button
             onClick={() => setIsScheduleModalOpen(true)}
             className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 cursor-pointer"

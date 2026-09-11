@@ -1,4 +1,4 @@
-﻿from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request
 from sqlalchemy import func
 from models import db, InspectionCase, Violation, Product, Manufacturer, ProductCategory, User, UserRole, CaseStatus, FinalDisposition
 from services.auth_service import require_auth, require_role
@@ -60,3 +60,29 @@ def get_repeat_violators():
         })
 
     return jsonify({"repeat_violators": violator_list})
+
+@analytics_bp.route("/smart-priority", methods=["GET"])
+@require_auth
+def get_smart_priority():
+    """
+    Smart Priority Dashboard Endpoint (Pandas GroupBy Analytics).
+    Returns Brand Priority (Violations & Risk Tiers) and Market Rule Trends.
+    """
+    timeframe = request.args.get("timeframe", "all")
+    refresh = request.args.get("refresh", "false").lower() in ["true", "1", "yes"]
+
+    from services.priority_analytics_service import PriorityAnalyticsService
+    data = PriorityAnalyticsService.get_smart_priority_data(timeframe=timeframe, refresh=refresh)
+    return jsonify(data)
+
+@analytics_bp.route("/smart-priority/seed-demo-data", methods=["POST"])
+@require_role(["SENIOR_OFFICER", "ADMIN"])
+def seed_smart_priority():
+    """Seeds or resets market priority data for demonstrations."""
+    from services.priority_analytics_service import PriorityAnalyticsService
+    PriorityAnalyticsService.seed_market_priority_data()
+    data = PriorityAnalyticsService.get_smart_priority_data(refresh=True)
+    return jsonify({
+        "message": "Market priority demo data successfully seeded.",
+        "data": data
+    })

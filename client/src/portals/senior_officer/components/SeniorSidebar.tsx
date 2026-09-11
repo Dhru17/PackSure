@@ -9,12 +9,14 @@ import {
   Scale,
   ShieldCheck,
   Calendar,
-  Sparkles
+  Sparkles,
+  Flame
 } from 'lucide-react';
 import { useAuthStore } from '../../../state/authStore';
 
 export type SeniorNavTab = 
   | 'home'
+  | 'smart_priority'
   | 'upcoming'
   | 'reviews'
   | 'intelligence'
@@ -39,6 +41,7 @@ export const SeniorSidebar: React.FC<SeniorSidebarProps> = ({
 
   const navItems = [
     { id: 'home' as SeniorNavTab, label: 'Dashboard', icon: Home },
+    { id: 'smart_priority' as SeniorNavTab, label: 'Smart Priority', icon: Flame, badge: 'Live' },
     { id: 'upcoming' as SeniorNavTab, label: 'Field Audits', icon: Calendar },
     { 
       id: 'reviews' as SeniorNavTab, 

@@ -11,12 +11,14 @@ import {
   ShieldAlert,
   Building2,
   MapPin,
-  ShieldCheck
+  ShieldCheck,
+  Flame
 } from 'lucide-react';
 import { useAuthStore } from '../../../state/authStore';
 
 export type AdminNavTab = 
   | 'home' 
+  | 'smart_priority'
   | 'companies'
   | 'jurisdictions'
   | 'inspectors'
@@ -42,6 +44,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
 
   const navItems = [
     { id: 'home' as AdminNavTab, label: 'Overview', icon: Home },
+    { id: 'smart_priority' as AdminNavTab, label: 'Smart Priority', icon: Flame, badge: 'Live' },
     { id: 'companies' as AdminNavTab, label: 'Companies & Plants', icon: Building2 },
     { id: 'jurisdictions' as AdminNavTab, label: 'Jurisdictions', icon: MapPin },
     { id: 'inspectors' as AdminNavTab, label: 'Inspector Matrix', icon: ShieldCheck },

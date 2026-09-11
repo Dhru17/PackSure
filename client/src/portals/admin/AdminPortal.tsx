@@ -26,6 +26,7 @@ import { AdminCategoryDetailsView } from './views/AdminCategoryDetailsView';
 import { AdminAuditLogsView } from './views/AdminAuditLogsView';
 import { AdminSettingsView } from './views/AdminSettingsView';
 import { AdminProfileView } from './views/AdminProfileView';
+import { SmartPriorityDashboard } from '../../components/analytics/SmartPriorityDashboard';
 
 // Modals
 import { UserFormModal } from './views/modals/UserFormModal';
@@ -538,6 +539,11 @@ export const AdminPortal: React.FC = () => {
                 setIsCategoryModalOpen(true);
               }}
             />
+          )}
+
+          {/* Smart Priority Dashboard (Pandas Groupby Intelligence) */}
+          {activeTab === 'smart_priority' && (
+            <SmartPriorityDashboard />
           )}
 
           {/* 2. Companies & Plants Master Data */}

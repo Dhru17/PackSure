@@ -14,6 +14,7 @@ import { SeniorHistoryView } from './views/SeniorHistoryView';
 import { SeniorNotificationsView } from './views/SeniorNotificationsView';
 import { SeniorProfileView } from './views/SeniorProfileView';
 import { SeniorReviewWorkspace } from './views/review/SeniorReviewWorkspace';
+import { SmartPriorityDashboard } from '../../components/analytics/SmartPriorityDashboard';
 
 export const SeniorOfficerPortal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<SeniorNavTab | 'review_workspace'>('home');
@@ -173,12 +174,27 @@ export const SeniorOfficerPortal: React.FC = () => {
               }}
               onViewUpcoming={() => setActiveTab('upcoming')}
               onViewIntelligence={() => setActiveTab('intelligence')}
+              onViewSmartPriority={() => setActiveTab('smart_priority')}
               onViewHistory={() => {
                 setActiveTab('history');
                 loadAllInspections();
               }}
               onRefreshData={refreshAllData}
               onAuditScheduled={handleAuditScheduled}
+            />
+          )}
+
+          {/* SCREEN: SMART PRIORITY DASHBOARD (PANDAS ANALYTICS) */}
+          {activeTab === 'smart_priority' && (
+            <SmartPriorityDashboard
+              onSelectBrand={() => {
+                setActiveTab('history');
+                loadAllInspections();
+              }}
+              onSelectRule={() => {
+                setActiveTab('reviews');
+                loadQueue();
+              }}
             />
           )}
 
