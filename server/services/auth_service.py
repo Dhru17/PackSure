@@ -25,10 +25,15 @@ def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         auth_header = request.headers.get("Authorization", "")
-        if not auth_header.startswith("Bearer "):
+        token = None
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+        elif request.args.get("token"):
+            token = request.args.get("token").strip()
+
+        if not token:
             return jsonify({"error": "Authentication required. Missing or malformed Bearer token."}), 401
         
-        token = auth_header.split(" ", 1)[1].strip()
         payload = decode_token(token)
         if not payload or "sub" not in payload:
             return jsonify({"error": "Invalid or expired token."}), 401
@@ -70,10 +75,13 @@ def check_case_access(case, user, for_mutation: bool = False):
             return jsonify({"error": "Cannot mutate a finalized inspection case."}), 400
         return None, None
 
-    # Inspectors can ONLY access their own assigned cases
+    # Inspectors can access their assigned cases or claim draft/unassigned cases
     if user_role == "INSPECTOR":
-        if case.inspector_id and case.inspector_id != user.id:
-            return jsonify({"error": f"Access forbidden. Case #{case.case_number} is not assigned to your inspector profile."}), 403
+        if case.inspector_id is None or (case.inspector_id != user.id and getattr(case.status, "value", str(case.status)) in ["DRAFT", "EVIDENCE_PENDING", "ANALYZING", "RETURNED"]):
+            case.inspector_id = user.id
+            db.session.commit()
+        elif case.inspector_id != user.id:
+            return jsonify({"error": f"Access forbidden. Case #{case.case_number} is assigned to another inspector profile."}), 403
 
         if for_mutation:
             status_val = getattr(case.status, "value", str(case.status))

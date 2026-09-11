@@ -14,10 +14,12 @@ import { ScheduleAuditModal } from '../components/ScheduleAuditModal';
 
 interface SeniorUpcomingAuditsViewProps {
   onOpenCase: (caseId: number) => void;
+  onAuditScheduled?: (newCase: any) => void;
 }
 
 export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> = ({
-  onOpenCase
+  onOpenCase,
+  onAuditScheduled
 }) => {
   const [audits, setAudits] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -343,8 +345,12 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
       <ScheduleAuditModal
         isOpen={isScheduleModalOpen}
         onClose={() => setIsScheduleModalOpen(false)}
-        onSuccess={() => {
+        onSuccess={(newCase) => {
+          setStatusFilter('ALL');
           loadAudits();
+          if (onAuditScheduled) {
+            onAuditScheduled(newCase);
+          }
         }}
       />
 

@@ -454,30 +454,48 @@ def replace_company_document(doc_id):
     })
 
 @company_bp.route("/documents/<int:doc_id>/download", methods=["GET"])
-@require_role(["COMPANY"])
+@require_auth
 def download_company_document(doc_id):
-    company_id, err_resp, err_code = get_authenticated_company_id()
-    if err_resp:
-        return err_resp, err_code
-
+    user_role = g.current_user.role.value if hasattr(g.current_user.role, "value") else str(g.current_user.role)
+    
     doc = db.session.get(CompanyDocument, doc_id)
     if not doc:
         return jsonify({"error": "Document not found."}), 404
 
-    # IDOR Check
-    if doc.company_id != company_id:
-        return jsonify({"error": "Access forbidden. You cannot access another company's documents."}), 403
+    # IDOR Check for Company Users
+    if user_role == "COMPANY":
+        company_id, err_resp, err_code = get_authenticated_company_id()
+        if err_resp:
+            return err_resp, err_code
+        if doc.company_id and company_id and doc.company_id != company_id:
+            return jsonify({"error": "Access forbidden. You cannot access another company's documents."}), 403
 
-    if not doc.file_url:
-        return jsonify({"error": "Document file not available."}), 404
+    pdf_fname = f"statutory_cert_{doc.id}.pdf"
+    pdf_path = os.path.join(Config.UPLOAD_FOLDER, pdf_fname)
+    
+    orig_path = None
+    if doc.file_url:
+        fname = os.path.basename(doc.file_url)
+        orig_path = os.path.join(Config.UPLOAD_FOLDER, fname)
 
-    fname = os.path.basename(doc.file_url)
-    file_path = os.path.join(Config.UPLOAD_FOLDER, fname)
-    if not os.path.exists(file_path):
-        # Return fallback or 404
-        return jsonify({"error": "Stored file not found on server."}), 404
+    is_valid_existing_pdf = False
+    if orig_path and os.path.exists(orig_path) and orig_path.lower().endswith('.pdf') and os.path.getsize(orig_path) > 300:
+        try:
+            with open(orig_path, 'rb') as f:
+                if f.read(4) == b'%PDF':
+                    is_valid_existing_pdf = True
+                    pdf_path = orig_path
+        except Exception:
+            is_valid_existing_pdf = False
 
-    return send_file(file_path, as_attachment=False)
+    if not is_valid_existing_pdf:
+        # Check if original was an image that can be embedded into the statutory PDF
+        attached_img = orig_path if (orig_path and os.path.exists(orig_path) and orig_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')) and os.path.getsize(orig_path) > 100) else None
+        
+        from services.report_generator import ReportGenerator
+        ReportGenerator.generate_statutory_certificate_pdf(doc.to_dict(), pdf_path, attached_image_path=attached_img)
+
+    return send_file(pdf_path, mimetype="application/pdf", as_attachment=False)
 
 # ==============================================================================
 # 6. COMPANY AUDITS & AUDIT DETAILS
@@ -612,14 +630,18 @@ def get_company_audit_detail(case_id):
 # 7. SECURE REPORT ACCESS (IDOR PROTECTED)
 # ==============================================================================
 
-@company_bp.route("/reports/<int:case_id>/pdf", methods=["GET"])
+@company_bp.route("/reports/<case_identifier>/pdf", methods=["GET"])
 @require_role(["COMPANY"])
-def get_company_report_pdf(case_id):
+def get_company_report_pdf(case_identifier):
     company_id, err_resp, err_code = get_authenticated_company_id()
     if err_resp:
         return err_resp, err_code
 
-    case = db.session.get(InspectionCase, case_id)
+    case = None
+    if str(case_identifier).isdigit():
+        case = db.session.get(InspectionCase, int(case_identifier))
+    if not case:
+        case = InspectionCase.query.filter_by(case_number=str(case_identifier)).first()
     if not case:
         return jsonify({"error": "Inspection case not found."}), 404
 

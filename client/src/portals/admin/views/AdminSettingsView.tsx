@@ -17,7 +17,7 @@ export const AdminSettingsView: React.FC = () => {
     department_name: 'Food & Drug Department & Legal Metrology Division',
     office_address: 'Government Complex, Sector 10, Gandhinagar, Gujarat',
     contact_email: 'admin@packsure.gov.in',
-    contact_phone: '+91 79 1234 5678'
+    contact_phone: '7912345678'
   });
 
   // Inspection Engine settings
@@ -44,6 +44,10 @@ export const AdminSettingsView: React.FC = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (orgForm.contact_phone && orgForm.contact_phone.trim().length !== 10) {
+      alert('Department Contact Phone must be exactly 10 digits.');
+      return;
+    }
     setSaveNotice('System configuration updated successfully.');
     setTimeout(() => setSaveNotice(null), 3000);
   };
@@ -151,13 +155,14 @@ export const AdminSettingsView: React.FC = () => {
 
                 <div>
                   <label className="block font-bold text-[#475569] uppercase tracking-wider mb-1">
-                    Contact Phone
+                    Contact Phone (10 Digits)
                   </label>
                   <input
                     type="text"
+                    maxLength={10}
                     value={orgForm.contact_phone}
-                    onChange={(e) => setOrgForm({ ...orgForm, contact_phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none"
+                    onChange={(e) => setOrgForm({ ...orgForm, contact_phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                    className="w-full px-3 py-2 border border-[#CBD5E1] rounded-lg text-xs text-[#1E293B] focus:ring-1 focus:ring-[#174A7E] focus:outline-none font-mono"
                   />
                 </div>
               </div>

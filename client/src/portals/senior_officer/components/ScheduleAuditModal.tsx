@@ -146,12 +146,17 @@ export const ScheduleAuditModal: React.FC<ScheduleAuditModalProps> = ({
 
     setIsSubmitting(true);
     try {
+      const selectedComp = companies.find(c => c.id === Number(selectedCompanyId));
+      const selectedCat = categories.find(c => c.id === Number(selectedCategoryId));
+      const defaultBrand = selectedComp ? selectedComp.name : 'Target Enterprise SKU';
+      const defaultComm = selectedCat ? `${selectedCat.name} Audit Sample` : 'Packaged Commodity SKU';
+
       const res = await api.scheduleAudit({
         company_id: selectedCompanyId ? Number(selectedCompanyId) : null,
         plant_id: selectedPlantId ? Number(selectedPlantId) : null,
         category_id: selectedCategoryId ? Number(selectedCategoryId) : null,
-        brand_name: brandName.trim() || undefined,
-        commodity_name: commodityName.trim() || undefined,
+        brand_name: brandName.trim() || defaultBrand,
+        commodity_name: commodityName.trim() || defaultComm,
         inspector_id: Number(selectedInspectorId),
         scheduled_date: scheduledDate,
         instructions: instructions.trim()

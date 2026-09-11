@@ -1,4 +1,4 @@
-﻿import enum
+import enum
 import json
 from datetime import datetime, timezone
 from . import db
@@ -43,6 +43,12 @@ class PackageEvidence(db.Model):
     rotation_angle = db.Column(db.Float, default=0.0)
     quality_verdict = db.Column(db.Enum(QualityVerdict, name="quality_verdicts"), default=QualityVerdict.READABLE, nullable=False)
     quality_summary = db.Column(db.Text, nullable=True)
+
+    # AI 6-Panel Classification & Mismatch Detection
+    predicted_surface = db.Column(db.String(50), nullable=True)
+    is_surface_mismatch = db.Column(db.Boolean, default=False, nullable=False)
+    surface_mismatch_warning = db.Column(db.Text, nullable=True)
+    features_detected_json = db.Column(db.Text, nullable=True)
     
     captured_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -50,6 +56,12 @@ class PackageEvidence(db.Model):
     declarations = db.relationship("Declaration", backref="evidence", lazy="select")
 
     def to_dict(self):
+        features = []
+        if self.features_detected_json:
+            try:
+                features = json.loads(self.features_detected_json)
+            except Exception:
+                pass
         return {
             "id": self.id,
             "case_id": self.case_id,
@@ -65,6 +77,10 @@ class PackageEvidence(db.Model):
             "contrast_score": self.contrast_score,
             "quality_verdict": self.quality_verdict.value if hasattr(self.quality_verdict, "value") else str(self.quality_verdict),
             "quality_summary": self.quality_summary,
+            "predicted_surface": self.predicted_surface or (self.surface_type.value if hasattr(self.surface_type, "value") else str(self.surface_type)),
+            "is_surface_mismatch": bool(self.is_surface_mismatch),
+            "surface_mismatch_warning": self.surface_mismatch_warning,
+            "features_detected": features,
             "captured_at": self.captured_at.isoformat() if self.captured_at else None
         }
 

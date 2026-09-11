@@ -7,6 +7,7 @@ from config import Config
 from models import db, Product, Manufacturer, ProductCategory, InspectionCase
 from services.auth_service import require_auth
 from services.ocr_service import OCRService
+from services.vision_analyzer import VisionAnalyzer
 
 products_bp = Blueprint("products_bp", __name__, url_prefix="/api/products")
 
@@ -63,6 +64,52 @@ def lookup_barcode(barcode):
         "previous_inspections": prior_list
     })
 
+@products_bp.route("/scan-barcode", methods=["POST"])
+@require_auth
+def scan_barcode_endpoint():
+    """
+    High-accuracy barcode scan endpoint using native zxing-cpp, pyzbar, and 4-way rotation sweeps.
+    """
+    if "file" not in request.files or not request.files["file"].filename:
+        return jsonify({"error": "No image file uploaded."}), 400
+
+    f = request.files["file"]
+    ext = os.path.splitext(f.filename)[1].lower() or ".jpg"
+    unique_name = f"scan_{uuid.uuid4().hex[:8]}{ext}"
+    save_path = os.path.join(Config.UPLOAD_FOLDER, unique_name)
+    f.save(save_path)
+
+    # 1. Multi-Engine Barcode Detection (zxing-cpp + pyzbar + OpenCV with 4 rotations)
+    barcodes = VisionAnalyzer.detect_barcodes_robust(save_path, panel_name="SCAN")
+    detected_barcode = barcodes[0]["barcode_number"] if barcodes else None
+
+    # 2. Fallback OCR structured label-value matching
+    if not detected_barcode:
+        text_blocks = OCRService.scan_single_image(save_path, panel_name="SCAN")
+        structured = OCRService._init_structured_json()
+        OCRService._run_label_value_matcher(text_blocks, structured)
+        b_val = structured.get("barcode", {}).get("value")
+        if b_val:
+            detected_barcode = b_val
+
+    if not detected_barcode:
+        return jsonify({
+            "success": False,
+            "barcode": None,
+            "found": False,
+            "message": "No barcode recognized in the uploaded photo. Please try a clearer picture."
+        }), 200
+
+    # Look up in product catalog
+    catalog_prod = Product.query.filter_by(barcode=detected_barcode).first()
+    return jsonify({
+        "success": True,
+        "barcode": detected_barcode,
+        "found": bool(catalog_prod),
+        "product": catalog_prod.to_dict() if catalog_prod else None,
+        "message": f"Barcode {detected_barcode} successfully detected!"
+    })
+
 @products_bp.route("", methods=["POST"])
 @require_auth
 def create_product():
@@ -86,12 +133,29 @@ def create_product():
     if not mfg_id and mfg_name:
         mfg = Manufacturer.query.filter_by(name=mfg_name).first()
         if not mfg:
-            mfg = Manufacturer(name=mfg_name, address=data.get("manufacturer_address", ""))
+            mfg = Manufacturer(name=mfg_name, address=data.get("manufacturer_address", "Registered Address"))
             db.session.add(mfg)
             db.session.flush()
         mfg_id = mfg.id
+    if not mfg_id:
+        default_mfg = Manufacturer.query.first()
+        if default_mfg:
+            mfg_id = default_mfg.id
 
+    # Category resolution
     cat_id = data.get("category_id")
+    cat_name = data.get("category_name", "").strip()
+    if not cat_id and cat_name:
+        cat = ProductCategory.query.filter(
+            (ProductCategory.name.ilike(f"%{cat_name}%")) |
+            (ProductCategory.category_code.ilike(f"%{cat_name}%"))
+        ).first()
+        if cat:
+            cat_id = cat.id
+    if not cat_id:
+        default_cat = ProductCategory.query.first()
+        if default_cat:
+            cat_id = default_cat.id
 
     product = Product(
         barcode=barcode,
@@ -131,25 +195,29 @@ def identify_product_image():
     f.save(save_path)
     file_url = f"/api/media/uploads/{unique_name}"
 
-    # 1. Barcode Detection via OpenCV
+    # 1. High-Performance Multi-Engine Barcode Detection (zxing-cpp + pyzbar + OpenCV with 4 rotations)
     detected_barcode = None
     try:
-        img = cv2.imread(save_path)
-        if img is not None:
-            bd = cv2.barcode.BarcodeDetector()
-            ret = bd.detectAndDecode(img)
-            if ret is not None and isinstance(ret, tuple):
-                for item in ret:
-                    if isinstance(item, str) and len(item.strip()) >= 8:
-                        detected_barcode = item.strip()
-                        break
-                    elif isinstance(item, (list, tuple)):
-                        for sub in item:
-                            if isinstance(sub, str) and len(sub.strip()) >= 8:
-                                detected_barcode = sub.strip()
-                                break
-                    if detected_barcode:
-                        break
+        barcodes = VisionAnalyzer.detect_barcodes_robust(save_path, panel_name="FRONT")
+        if barcodes:
+            detected_barcode = barcodes[0]["barcode_number"]
+        else:
+            img = cv2.imread(save_path)
+            if img is not None:
+                bd = cv2.barcode.BarcodeDetector()
+                ret = bd.detectAndDecode(img)
+                if ret is not None and isinstance(ret, tuple):
+                    for item in ret:
+                        if isinstance(item, str) and len(item.strip()) >= 8:
+                            detected_barcode = item.strip()
+                            break
+                        elif isinstance(item, (list, tuple)):
+                            for sub in item:
+                                if isinstance(sub, str) and len(sub.strip()) >= 8:
+                                    detected_barcode = sub.strip()
+                                    break
+                        if detected_barcode:
+                            break
     except Exception as e:
         print(f"Barcode detection error on {save_path}: {e}")
 
@@ -186,6 +254,15 @@ def identify_product_image():
     extracted_texts = [b["text"].strip() for b in text_blocks if b.get("text")]
     combined_lower = " ".join(extracted_texts).lower()
 
+    # Parse structured fields from OCR tokens using OCRService matcher
+    structured = OCRService._init_structured_json()
+    OCRService._run_label_value_matcher(text_blocks, structured)
+
+    if not detected_barcode:
+        b_val = structured.get("barcode", {}).get("value")
+        if b_val:
+            detected_barcode = b_val
+
     # 3. Match against existing registered catalog products
     all_products = Product.query.all()
     matched_product = None
@@ -200,10 +277,6 @@ def identify_product_image():
         if c_name and len(c_name) >= 4 and c_name in combined_lower:
             matched_product = p
             break
-
-    # Parse structured fields from OCR tokens using OCRService matcher
-    structured = OCRService._init_structured_json()
-    OCRService._run_label_value_matcher(text_blocks, structured)
 
     extracted_brand = structured.get('brand_name', {}).get('value')
     extracted_commodity = structured.get('generic_commodity_name', {}).get('value') or structured.get('generic_name', {}).get('value')

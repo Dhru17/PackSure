@@ -28,6 +28,25 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
 
+    with app.app_context():
+        # Ensure new columns exist in sqlite table without requiring full reset
+        try:
+            from sqlalchemy import text
+            with db.engine.connect() as conn:
+                existing_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(package_evidences)")).fetchall()]
+                if existing_cols:
+                    if "predicted_surface" not in existing_cols:
+                        conn.execute(text("ALTER TABLE package_evidences ADD COLUMN predicted_surface VARCHAR(50)"))
+                    if "is_surface_mismatch" not in existing_cols:
+                        conn.execute(text("ALTER TABLE package_evidences ADD COLUMN is_surface_mismatch BOOLEAN DEFAULT 0"))
+                    if "surface_mismatch_warning" not in existing_cols:
+                        conn.execute(text("ALTER TABLE package_evidences ADD COLUMN surface_mismatch_warning TEXT"))
+                    if "features_detected_json" not in existing_cols:
+                        conn.execute(text("ALTER TABLE package_evidences ADD COLUMN features_detected_json TEXT"))
+                    conn.commit()
+        except Exception as _e:
+            pass
+
     # Register Blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(products_bp)

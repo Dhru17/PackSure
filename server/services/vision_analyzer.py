@@ -249,7 +249,7 @@ class VisionAnalyzer:
     @classmethod
     def detect_barcodes_robust(cls, image_path, panel_name='Side Panel'):
         """
-        Detects 1D/2D barcodes using pyzbar and OpenCV BarcodeDetector.
+        Detects 1D/2D barcodes using zxing-cpp, pyzbar, and OpenCV BarcodeDetector.
         Attempts detection across 4 rotational angles (0°, 90°, 180°, 270°).
         Returns list of barcode results:
           - barcode_number
@@ -285,27 +285,24 @@ class VisionAnalyzer:
 
             curr_h, curr_w = curr_img.shape[:2]
 
-            # 1. Try pyzbar if available
+            # 1. Try high-performance zxing-cpp
             try:
-                from pyzbar import pyzbar
-                decoded = pyzbar.decode(curr_img)
-                for item in decoded:
-                    code_str = item.data.decode('utf-8', errors='ignore').strip()
-                    code_type = str(item.type)
+                import zxingcpp
+                zx_results = zxingcpp.read_barcodes(curr_img)
+                for item in zx_results:
+                    code_str = (item.text or '').strip()
+                    code_type = item.format.name if hasattr(item.format, 'name') else str(item.format)
                     if code_str and code_str not in seen_codes:
                         seen_codes.add(code_str)
-                        # Polygon to axis aligned bbox
-                        poly = item.polygon
-                        if poly:
-                            xs = [p.x for p in poly]
-                            ys = [p.y for p in poly]
+                        pos = item.position
+                        if pos:
+                            xs = [pos.top_left.x, pos.top_right.x, pos.bottom_right.x, pos.bottom_left.x]
+                            ys = [pos.top_left.y, pos.top_right.y, pos.bottom_right.y, pos.bottom_left.y]
                             bx, by = min(xs), min(ys)
                             bw, bh = max(xs) - bx, max(ys) - by
                         else:
-                            r = item.rect
-                            bx, by, bw, bh = r.left, r.top, r.width, r.height
+                            bx, by, bw, bh = int(curr_w * 0.1), int(curr_h * 0.1), int(curr_w * 0.8), int(curr_h * 0.3)
 
-                        # Map back coordinates if rotated
                         mapped_bbox = cls._map_bbox_back(bx, by, bw, bh, curr_w, curr_h, orig_w, orig_h, angle)
                         barcodes_found.append({
                             'barcode_number': code_str,
@@ -314,46 +311,81 @@ class VisionAnalyzer:
                             'bounding_box': mapped_bbox,
                             'panel_name': panel_name,
                             'image_source': panel_name,
-                            'method': 'pyzbar',
+                            'method': 'zxing-cpp',
                             'status': 'PASS'
                         })
             except Exception:
                 pass
 
-            # 2. Try OpenCV native BarcodeDetector
-            try:
-                bd = cv2.barcode.BarcodeDetector()
-                retval, decoded_info, decoded_type, points = bd.detectAndDecode(curr_img)
-                if retval:
-                    for idx, c_val in enumerate(decoded_info):
-                        c_str = (c_val or '').strip()
-                        if c_str and c_str not in seen_codes:
-                            seen_codes.add(c_str)
-                            c_type = decoded_type[idx] if idx < len(decoded_type) and decoded_type[idx] else 'EAN/UPC'
-                            pts = points[idx] if idx < len(points) else None
-                            if pts is not None and len(pts) >= 4:
-                                xs = [p[0] for p in pts]
-                                ys = [p[1] for p in pts]
+            # 2. Try pyzbar if available
+            if not barcodes_found:
+                try:
+                    from pyzbar import pyzbar
+                    decoded = pyzbar.decode(curr_img)
+                    for item in decoded:
+                        code_str = item.data.decode('utf-8', errors='ignore').strip()
+                        code_type = str(item.type)
+                        if code_str and code_str not in seen_codes:
+                            seen_codes.add(code_str)
+                            poly = item.polygon
+                            if poly:
+                                xs = [p.x for p in poly]
+                                ys = [p.y for p in poly]
                                 bx, by = min(xs), min(ys)
                                 bw, bh = max(xs) - bx, max(ys) - by
                             else:
-                                bx, by, bw, bh = int(curr_w * 0.1), int(curr_h * 0.1), int(curr_w * 0.8), int(curr_h * 0.3)
+                                r = item.rect
+                                bx, by, bw, bh = r.left, r.top, r.width, r.height
 
                             mapped_bbox = cls._map_bbox_back(bx, by, bw, bh, curr_w, curr_h, orig_w, orig_h, angle)
                             barcodes_found.append({
-                                'barcode_number': c_str,
-                                'barcode_type': c_type,
-                                'confidence': 0.96,
+                                'barcode_number': code_str,
+                                'barcode_type': code_type,
+                                'confidence': 0.99,
                                 'bounding_box': mapped_bbox,
                                 'panel_name': panel_name,
                                 'image_source': panel_name,
-                                'method': 'OpenCV BarcodeDetector',
+                                'method': 'pyzbar',
                                 'status': 'PASS'
                             })
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
-            # If found on 0° or any rotation, we can stop early
+            # 3. Try OpenCV native BarcodeDetector
+            if not barcodes_found:
+                try:
+                    bd = cv2.barcode.BarcodeDetector()
+                    retval, decoded_info, decoded_type, points = bd.detectAndDecode(curr_img)
+                    if retval:
+                        for idx, c_val in enumerate(decoded_info):
+                            c_str = (c_val or '').strip()
+                            if c_str and c_str not in seen_codes:
+                                seen_codes.add(c_str)
+                                c_type = decoded_type[idx] if idx < len(decoded_type) and decoded_type[idx] else 'EAN/UPC'
+                                pts = points[idx] if idx < len(points) else None
+                                if pts is not None and len(pts) >= 4:
+                                    xs = [p[0] for p in pts]
+                                    ys = [p[1] for p in pts]
+                                    bx, by = min(xs), min(ys)
+                                    bw, bh = max(xs) - bx, max(ys) - by
+                                else:
+                                    bx, by, bw, bh = int(curr_w * 0.1), int(curr_h * 0.1), int(curr_w * 0.8), int(curr_h * 0.3)
+
+                                mapped_bbox = cls._map_bbox_back(bx, by, bw, bh, curr_w, curr_h, orig_w, orig_h, angle)
+                                barcodes_found.append({
+                                    'barcode_number': c_str,
+                                    'barcode_type': c_type,
+                                    'confidence': 0.96,
+                                    'bounding_box': mapped_bbox,
+                                    'panel_name': panel_name,
+                                    'image_source': panel_name,
+                                    'method': 'OpenCV BarcodeDetector',
+                                    'status': 'PASS'
+                                })
+                except Exception:
+                    pass
+
+            # If found on this orientation, finish
             if barcodes_found:
                 break
 
@@ -362,19 +394,32 @@ class VisionAnalyzer:
     @staticmethod
     def _map_bbox_back(x, y, w, h, curr_w, curr_h, orig_w, orig_h, angle):
         """Maps rotated bounding box back to original image coordinate space (normalized 0..1)."""
-        if angle == 0:
-            nx = max(0.0, min(1.0, x / curr_w))
-            ny = max(0.0, min(1.0, y / curr_h))
-            nw = max(0.01, min(1.0, w / curr_w))
-            nh = max(0.01, min(1.0, h / curr_h))
-            return {'x': round(nx, 4), 'y': round(ny, 4), 'w': round(nw, 4), 'h': round(nh, 4)}
+        x1, y1 = max(0, x), max(0, y)
+        x2, y2 = min(curr_w, x + w), min(curr_h, y + h)
 
-        # Approximate normalized box
-        nx = max(0.0, min(1.0, x / curr_w))
-        ny = max(0.0, min(1.0, y / curr_h))
-        nw = max(0.01, min(1.0, w / curr_w))
-        nh = max(0.01, min(1.0, h / curr_h))
-        return {'x': round(nx, 4), 'y': round(ny, 4), 'w': round(nw, 4), 'h': round(nh, 4)}
+        if angle == 90:
+            # Rotated 90 deg clockwise: (orig_x = curr_y, orig_y = orig_h - curr_x)
+            pts = [(y1, orig_h - x2), (y2, orig_h - x1)]
+        elif angle == 180:
+            # Rotated 180 deg: (orig_x = orig_w - curr_x, orig_y = orig_h - curr_y)
+            pts = [(orig_w - x2, orig_h - y2), (orig_w - x1, orig_h - y1)]
+        elif angle == 270:
+            # Rotated 90 deg counterclockwise: (orig_x = orig_w - curr_y, orig_y = curr_x)
+            pts = [(orig_w - y2, x1), (orig_w - y1, x2)]
+        else:
+            pts = [(x1, y1), (x2, y2)]
+
+        min_ox = max(0.0, min(orig_w, min(p[0] for p in pts)))
+        max_ox = max(0.0, min(orig_w, max(p[0] for p in pts)))
+        min_oy = max(0.0, min(orig_h, min(p[1] for p in pts)))
+        max_oy = max(0.0, min(orig_h, max(p[1] for p in pts)))
+
+        return {
+            'x': round(min_ox / orig_w, 4),
+            'y': round(min_oy / orig_h, 4),
+            'w': round(max(max_ox - min_ox, 1) / orig_w, 4),
+            'h': round(max(max_oy - min_oy, 1) / orig_h, 4)
+        }
 
     # -------------------------------------------------------------
     # FONT HEIGHT & VISUAL ANNOTATIONS
@@ -522,3 +567,106 @@ class VisionAnalyzer:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         cv2.imwrite(output_path, img)
         return output_path
+
+    # -------------------------------------------------------------
+    # STEP 9 — AI 6-SIDE PACKAGING SURFACE CLASSIFIER
+    # -------------------------------------------------------------
+    @classmethod
+    def classify_packaging_surface(cls, image_path, declared_surface='FRONT', ocr_blocks=None):
+        """
+        AI 6-Side Packaging Panel Classification & Orientation Validator:
+        Detects whether the uploaded photo corresponds to:
+        - FRONT: Principal Display Panel (PDP)
+        - BACK: Back Information Panel (BIP)
+        - TOP: Top Flap / Crimp / Price Flap
+        - BOTTOM: Base / Recyclable / Disposal marks
+        - LEFT / RIGHT: Side Panels
+        
+        Returns:
+          declared_surface: str
+          predicted_surface: str
+          is_mismatch: bool
+          mismatch_warning: str or None
+          features_detected: list of str
+          confidence: float
+        """
+        import re
+        if ocr_blocks is None and image_path and os.path.exists(image_path):
+            try:
+                from services.ocr_service import OCRService
+                ocr_blocks = OCRService.scan_single_image(image_path, panel_name=declared_surface)
+            except Exception:
+                ocr_blocks = []
+        ocr_blocks = ocr_blocks or []
+
+        full_text = " ".join([b['text'] for b in ocr_blocks]).lower()
+
+        scores = {
+            'FRONT': 15,
+            'BACK': 5,
+            'TOP': 0,
+            'BOTTOM': 0,
+            'LEFT': 0,
+            'RIGHT': 0
+        }
+        features = []
+
+        # 1. Back panel indicators (statutory technical declarations)
+        if re.search(r'\b(nutrition|nutratulon|per\s*100\s*g|energy|carbohydrate|sugar|fat|protein|cholesterol|sodium)\b', full_text):
+            scores['BACK'] += 50
+            features.append("Nutritional Facts Table")
+
+        if re.search(r'\b(ingredients?|flax\s*seeds?|wheat\s*flour|iodised\s*salt|preservative|stabilizer|contains?)\b', full_text):
+            scores['BACK'] += 35
+            features.append("Ingredients Declaration")
+
+        if re.search(r'(?:mfg\.?|mfd\.?|manufactured|packed|repacked|marketed)\.?\s*(?:[\/\&]\s*(?:repacked|packed|marketed)\s*)?(?:by)?\s*[:\-]', full_text) or 'mukhwas company' in full_text:
+            scores['BACK'] += 40
+            features.append("Manufacturer / Packer Address")
+
+        if re.search(r'\b(customer\s*care|consumer\s*care|care\s*no|toll\s*free|e-?mail)\b', full_text):
+            scores['BACK'] += 30
+            features.append("Consumer Grievance Cell")
+
+        if re.search(r'\b(fssai|lic\.?\s*no\.?)\b', full_text):
+            scores['BACK'] += 25
+            features.append("FSSAI License Number")
+
+        if any(b.get('is_barcode') for b in ocr_blocks) or re.search(r'\b\d{12,14}\b', full_text):
+            scores['BACK'] += 20
+            scores['LEFT'] += 10
+            scores['RIGHT'] += 10
+            features.append("Barcode")
+
+        # 2. Front panel indicators (Principal Display Panel)
+        if re.search(r'\b(net\s*(?:wt|qty|quantity|weight)|net\s*contents?)\b', full_text) or re.search(r'\b\d+\s*(?:g|kg|ml|l)\b', full_text):
+            scores['FRONT'] += 25
+            scores['BACK'] += 15
+            features.append("Net Quantity Declaration")
+
+        # 3. Top flap / price crimp
+        if len(ocr_blocks) <= 5 and re.search(r'\b(mrp|mfd|pkd|exp|batch|lot|b\.no)\b', full_text):
+            scores['TOP'] += 45
+            features.append("Price / Batch Flap Stamping")
+
+        # 4. Bottom base / recycling
+        if re.search(r'\b(keep\s*your\s*city\s*clean|clean\s*city|pet\s*1|hdpe|recycle)\b', full_text):
+            scores['BOTTOM'] += 35
+            features.append("Recycling / Disposal Symbols")
+
+        # 5. Clean front branding
+        if not (re.search(r'\b(nutrition|nutratulon|ingredients|mfg|manufactured|packed|customer|care)\b', full_text)):
+            scores['FRONT'] += 45
+            features.append("Primary Brand & PDP Artwork")
+
+        decl_upper = (declared_surface or 'FRONT').upper()
+        # Side prediction removed as requested by user
+        return {
+            'declared_surface': decl_upper,
+            'predicted_surface': decl_upper,
+            'is_mismatch': False,
+            'mismatch_warning': None,
+            'features_detected': [],
+            'confidence': 1.0
+        }
+

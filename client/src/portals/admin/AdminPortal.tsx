@@ -445,6 +445,17 @@ export const AdminPortal: React.FC = () => {
     }
   };
 
+  const handleDeleteCategory = async (category: ProductCategory) => {
+    try {
+      await api.deleteCategory(category.id);
+      showNotice(`Category '${category.name}' deleted successfully.`);
+      loadCategories();
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete category.');
+    }
+  };
+
   return (
     <div className="flex bg-[#F8FAFC] min-h-screen text-[#1E293B]">
       {/* Fixed Sidebar */}
@@ -704,7 +715,7 @@ export const AdminPortal: React.FC = () => {
               }}
               onToggleStatus={handleToggleCategoryStatus}
               onDeleteCategory={(c) => {
-                handleToggleCategoryStatus(c);
+                handleDeleteCategory(c);
               }}
               onOpenRuleMappings={async (cat) => {
                 setSelectedCategory(cat);

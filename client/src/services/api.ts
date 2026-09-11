@@ -77,6 +77,14 @@ export const api = {
       detected_texts?: string[];
       message?: string;
     }>("/api/products/identify-image", { method: "POST", body: formData }),
+  scanBarcodeImage: (formData: FormData) =>
+    apiFetch<{
+      success: boolean;
+      barcode?: string;
+      found: boolean;
+      product?: any;
+      message?: string;
+    }>("/api/products/scan-barcode", { method: "POST", body: formData }),
 
   // Inspections
   getInspectorOverview: () => apiFetch<any>("/api/inspections/overview"),
@@ -85,7 +93,12 @@ export const api = {
   getInspection: (id: number) => apiFetch<any>(`/api/inspections/${id}`),
   createInspection: (data: any) => apiFetch<{ inspection: any }>("/api/inspections", { method: "POST", body: JSON.stringify(data) }),
   uploadEvidence: (caseId: number, formData: FormData) => 
-    apiFetch<{ evidence: any; quality_analysis: any }>(`/api/inspections/${caseId}/evidence`, { method: "POST", body: formData }),
+    apiFetch<{ evidence: any; quality_analysis: any; surface_classification?: any }>(`/api/inspections/${caseId}/evidence`, { method: "POST", body: formData }),
+  reassignEvidenceSurface: (caseId: number, evidenceId: number, newSurfaceType: string) =>
+    apiFetch<{ message: string; evidence: any }>(`/api/inspections/${caseId}/evidence/${evidenceId}/reassign`, {
+      method: "POST",
+      body: JSON.stringify({ new_surface_type: newSurfaceType })
+    }),
   runAnalysis: (caseId: number) => apiFetch<any>(`/api/inspections/${caseId}/analyze`, { method: "POST" }),
   saveMeasurements: (caseId: number, data: {
     actual_net_quantity?: string;
@@ -267,7 +280,10 @@ export const api = {
 
   // Media
   getMediaUrl: (path: string) => path.startsWith("http") ? path : `${API_BASE}${path}`,
-  getReportPdfUrl: (caseId: number) => `${API_BASE}/api/reports/${caseId}/pdf`,
+  getReportPdfUrl: (caseId: number) => {
+    const token = getAuthToken();
+    return `${API_BASE}/api/reports/${caseId}/pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  },
 
   // Company Module
   getCompanyDashboard: () => apiFetch<any>("/api/company/dashboard"),
@@ -298,8 +314,14 @@ export const api = {
     return apiFetch<{ audits: any[]; count: number }>(`/api/company/audits${qs ? `?${qs}` : ""}`);
   },
   getCompanyAuditDetail: (caseId: number) => apiFetch<any>(`/api/company/audits/${caseId}`),
-  getCompanyDocumentDownloadUrl: (docId: number) => `${API_BASE}/api/company/documents/${docId}/download`,
-  getCompanyReportDownloadUrl: (caseNumberOrId: string | number) => `${API_BASE}/api/company/reports/${caseNumberOrId}/pdf`,
+  getCompanyDocumentDownloadUrl: (docId: number) => {
+    const token = getAuthToken();
+    return `${API_BASE}/api/company/documents/${docId}/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  },
+  getCompanyReportDownloadUrl: (caseNumberOrId: string | number) => {
+    const token = getAuthToken();
+    return `${API_BASE}/api/company/reports/${caseNumberOrId}/pdf${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+  },
   getCompanyNotifications: () => apiFetch<{ notifications: any[]; count: number; unread_count: number }>("/api/company/notifications"),
   markCompanyNotificationRead: (notifId: number) => apiFetch<any>(`/api/company/notifications/${notifId}/read`, { method: "POST" }),
   getCompanyRules: () => apiFetch<{ rules: any[]; count: number; categories: any[]; effective_rule_version: string }>("/api/company/rules")

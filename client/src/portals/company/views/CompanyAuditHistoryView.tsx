@@ -32,6 +32,8 @@ interface AuditHistoryItem {
   facility_state?: string;
   scheduled_date?: string;
   completed_date?: string;
+  finalized_at?: string;
+  created_at?: string;
   status: string;
   compliance_status?: string;
   compliance_score?: number;
@@ -275,10 +277,15 @@ export const CompanyAuditHistoryView: React.FC<CompanyAuditHistoryViewProps> = (
                   </div>
 
                   <div className="flex flex-wrap items-center gap-4 text-xs text-[#64748B]">
-                    <span className="flex items-center gap-1.5">
-                      <Calendar className="w-3.5 h-3.5" />
-                      Date: {a.scheduled_date ? new Date(a.scheduled_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
-                    </span>
+                    {(() => {
+                      const auditDate = a.completed_date || a.finalized_at || a.scheduled_date || a.created_at;
+                      return (
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5" />
+                          Date: {auditDate ? new Date(auditDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                        </span>
+                      );
+                    })()}
                     {a.items_inspected_count !== undefined && (
                       <span>
                         Samples Tested: <strong className="text-[#1E293B]">{a.items_inspected_count}</strong>
@@ -296,7 +303,7 @@ export const CompanyAuditHistoryView: React.FC<CompanyAuditHistoryViewProps> = (
               <div className="flex items-center gap-2.5 self-end md:self-center flex-shrink-0">
                 {a.status === 'FINALIZED' && (
                   <button
-                    onClick={(e) => handleDownloadPdf(e, a.case_number)}
+                    onClick={(e) => handleDownloadPdf(e, a.case_number || String(a.id))}
                     className="px-3 py-2 bg-[#ECFDF5] hover:bg-[#D1FAE5] text-[#059669] border border-[#A7F3D0] rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                     title="Download Official Inspection Report PDF"
                   >

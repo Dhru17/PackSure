@@ -32,15 +32,17 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
 }) => {
   const [selectedSurface, setSelectedSurface] = useState<SurfaceType>('FRONT');
   const [isUploading, setIsUploading] = useState(false);
+  const [isReassigning, setIsReassigning] = useState(false);
   const [previewEvidence, setPreviewEvidence] = useState<PackageEvidence | null>(null);
+  const [showMissingBackModal, setShowMissingBackModal] = useState(false);
 
-  const surfaces: { id: SurfaceType; label: string; isRequired: boolean }[] = [
-    { id: 'FRONT', label: 'Front Panel (PDP)', isRequired: true },
-    { id: 'BACK', label: 'Back Information Panel (BIP)', isRequired: true },
-    { id: 'LEFT', label: 'Left Side Panel', isRequired: false },
-    { id: 'RIGHT', label: 'Right Side Panel', isRequired: false },
-    { id: 'TOP', label: 'Top Flap', isRequired: false },
-    { id: 'BOTTOM', label: 'Bottom / Base', isRequired: false },
+  const surfaces: { id: SurfaceType; label: string; shortLabel: string; isRequired: boolean; desc: string }[] = [
+    { id: 'FRONT', label: 'Front Panel (PDP)', shortLabel: 'Front', isRequired: true, desc: 'Principal Display Panel: Brand name, product title, net quantity' },
+    { id: 'BACK', label: 'Back Information Panel (BIP)', shortLabel: 'Back', isRequired: true, desc: 'Information Panel: MRP, Mfg Date, Address, Consumer Care, FSSAI' },
+    { id: 'LEFT', label: 'Left Side Panel', shortLabel: 'Left', isRequired: false, desc: 'Side declarations, bar code, story/instructions' },
+    { id: 'RIGHT', label: 'Right Side Panel', shortLabel: 'Right', isRequired: false, desc: 'Nutritional chart, ingredients, importer info' },
+    { id: 'TOP', label: 'Top Flap / Seal', shortLabel: 'Top', isRequired: false, desc: 'Crimp seal, batch stamping, expiry stamp' },
+    { id: 'BOTTOM', label: 'Bottom / Base', shortLabel: 'Bottom', isRequired: false, desc: 'Base, container recycling codes, disposal icons' },
   ];
 
   const currentEvidence = c.evidences?.find(
@@ -66,14 +68,33 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
     }
   };
 
-  // Required surfaces completion check
-  const requiredSurfaces = surfaces.filter(s => s.isRequired);
-  const uploadedRequiredCount = requiredSurfaces.filter(s => 
-    c.evidences?.some(e => e.surface_type.toUpperCase() === s.id.toUpperCase())
-  ).length;
+  const handleReassignSurface = async (evidenceId: number, targetSurface: SurfaceType) => {
+    setIsReassigning(true);
+    try {
+      await api.reassignEvidenceSurface(c.id, evidenceId, targetSurface);
+      const updated = await api.getInspection(c.id);
+      onEvidenceUpdated(updated);
+      setSelectedSurface(targetSurface);
+    } catch (err: any) {
+      alert(`Could not reassign surface: ${err.message}`);
+    } finally {
+      setIsReassigning(false);
+    }
+  };
 
+  // Status checks across all panels
+  const hasFront = Boolean(c.evidences?.some(e => e.surface_type.toUpperCase() === 'FRONT'));
+  const hasBack = Boolean(c.evidences?.some(e => e.surface_type.toUpperCase() === 'BACK'));
   const totalUploaded = c.evidences?.length || 0;
-  const isReadyForAnalysis = uploadedRequiredCount >= 1; // At least Front/PDP captured
+  const isReadyForAnalysis = totalUploaded >= 1;
+
+  const handleContinueClick = () => {
+    if (hasFront && !hasBack) {
+      setShowMissingBackModal(true);
+    } else {
+      onContinue();
+    }
+  };
 
   const getQualityMessage = (ev: PackageEvidence) => {
     if (ev.quality_verdict === 'READABLE') {
@@ -88,22 +109,40 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
   return (
     <div className="bg-white border border-[#D8DDE3] rounded-2xl p-6 sm:p-8 shadow-xs space-y-8">
       {/* Header & Purpose */}
-      <div className="border-b border-[#E2E8F0] pb-4">
-        <h2 className="text-lg font-bold text-[#1E293B] tracking-tight flex items-center gap-2.5">
-          <Camera className="w-5 h-5 text-[#174A7E]" />
-          <span>Capture Package Visual Evidence</span>
-        </h2>
-        <p className="text-xs text-[#64748B] mt-1 font-medium">
-          Capture high-clarity photos of the required package surfaces to verify declarations under Legal Metrology Rules.
-        </p>
+      <div className="border-b border-[#E2E8F0] pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-bold text-[#1E293B] tracking-tight flex items-center gap-2.5">
+            <Camera className="w-5 h-5 text-[#174A7E]" />
+            <span>Capture Package Visual Evidence</span>
+          </h2>
+          <p className="text-xs text-[#64748B] mt-1 font-medium">
+            Capture photos of package panels (Front PDP, Back BIP, and optional sides/flaps) for automated compliance inspection.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className={`text-xs px-2.5 py-1 rounded-full font-bold border ${
+            hasFront && hasBack 
+              ? 'bg-[#F0FDF4] text-[#15803D] border-[#DCFCE7]' 
+              : hasFront 
+              ? 'bg-[#FFFBEB] text-[#D97706] border-[#FEF3C7]' 
+              : 'bg-[#F1F5F9] text-[#64748B] border-[#E2E8F0]'
+          }`}>
+            {hasFront && hasBack 
+              ? '✓ Front & Back Captured' 
+              : hasFront 
+              ? '⚠ Front Only (Back Missing)' 
+              : 'Capture Evidence'}
+          </span>
+        </div>
       </div>
 
-      {/* Surface Selection Tabs */}
+      {/* Surface Selection Tabs (All 6 Packaging Sides) */}
       <div className="space-y-3">
         <div className="text-xs font-bold uppercase tracking-wider text-[#475569] flex items-center justify-between">
-          <span>Select Package Surface</span>
+          <span>Select Package Panel ({totalUploaded}/6 Captured)</span>
           <span className="text-[11px] text-[#64748B] font-normal">
-            Evidence Collected: <strong className="text-[#1E293B]">{totalUploaded} surfaces</strong>
+            Click a panel to view, capture or reassign
           </span>
         </div>
 
@@ -118,24 +157,29 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
                 key={s.id}
                 type="button"
                 onClick={() => setSelectedSurface(s.id)}
-                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between space-y-2 cursor-pointer ${
+                className={`p-3 rounded-xl border text-left transition flex flex-col justify-between space-y-2 cursor-pointer relative ${
                   isSelected
-                    ? 'bg-[#174A7E] text-white border-[#174A7E] shadow-xs'
+                    ? 'bg-[#174A7E] text-white border-[#174A7E] shadow-sm ring-2 ring-[#174A7E]/20'
                     : hasEvidence
                     ? 'bg-[#F0FDF4] text-[#15803D] border-[#DCFCE7] hover:border-[#15803D]'
                     : 'bg-[#F8FAFC] text-[#475569] border-[#CBD5E1] hover:bg-white'
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider">
-                    {s.isRequired ? 'Required' : 'Optional'}
+                  <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">
+                    {s.isRequired ? 'Mandatory' : 'Side/Flap'}
                   </span>
-                  {hasEvidence && (
+                  {hasEvidence ? (
                     <CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-[#15803D]'}`} />
-                  )}
+                  ) : null}
                 </div>
-                <div className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-[#1E293B]'}`}>
-                  {s.label.split(' ')[0]}
+                <div>
+                  <div className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-[#1E293B]'}`}>
+                    {s.shortLabel}
+                  </div>
+                  <div className={`text-[10px] truncate ${isSelected ? 'text-blue-100' : 'text-[#64748B]'}`}>
+                    {hasEvidence ? '✓ Photo Ready' : 'Empty'}
+                  </div>
                 </div>
               </button>
             );
@@ -145,22 +189,25 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
 
       {/* Main Evidence Card for Selected Surface */}
       <div className="bg-[#F8FAFC] border border-[#D8DDE3] rounded-xl p-6 space-y-5">
-        <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-[#E2E8F0] pb-3 gap-2">
           <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E293B]">
-              {surfaces.find(s => s.id === selectedSurface)?.label || selectedSurface}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1E293B]">
+                {surfaces.find(s => s.id === selectedSurface)?.label || selectedSurface}
+              </h3>
+              {surfaces.find(s => s.id === selectedSurface)?.isRequired && (
+                <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded">
+                  Mandatory for Digital Sign
+                </span>
+              )}
+            </div>
             <p className="text-[11px] text-[#64748B] mt-0.5">
-              {selectedSurface === 'FRONT' 
-                ? 'Capture the Principal Display Panel (PDP) showing brand name and net quantity.'
-                : selectedSurface === 'BACK'
-                ? 'Capture the Back Panel (BIP) showing manufacturer, MRP, manufacturing date, and customer care.'
-                : 'Capture secondary declarations and side panels.'}
+              {surfaces.find(s => s.id === selectedSurface)?.desc}
             </p>
           </div>
 
           {currentEvidence && (
-            <span className={`text-[11px] font-bold px-3 py-1 rounded-full border ${getQualityMessage(currentEvidence).style}`}>
+            <span className={`text-[11px] font-bold px-3 py-1 rounded-full border self-start sm:self-auto ${getQualityMessage(currentEvidence).style}`}>
               {getQualityMessage(currentEvidence).text}
             </span>
           )}
@@ -191,7 +238,7 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
               <div>
                 <div className="font-bold text-[#1E293B] text-sm">{currentEvidence.original_filename}</div>
                 <div className="text-[#64748B] text-[11px] mt-0.5">
-                  Captured surface for {selectedSurface} panel inspection
+                  Currently assigned to <strong>{selectedSurface}</strong> panel
                 </div>
               </div>
 
@@ -217,32 +264,48 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
                 </div>
               </div>
 
+              {/* Reassign Panel Selector dropdown */}
               <div className="flex flex-wrap items-center gap-3 pt-1">
                 <button
                   type="button"
                   onClick={() => setPreviewEvidence(currentEvidence)}
-                  className="px-4 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#174A7E] font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-1.5"
+                  className="px-3.5 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#174A7E] font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-1.5"
                 >
                   <Eye className="w-4 h-4" />
                   <span>View Photo</span>
                 </button>
 
-                <label className="px-4 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#475569] font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer">
+                <label className="px-3.5 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#475569] font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer">
                   <RotateCcw className="w-4 h-4" />
                   <span>Replace Photo</span>
                   <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                 </label>
+
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <span className="text-[11px] text-[#64748B] font-medium">Reassign to:</span>
+                  <select
+                    value={selectedSurface}
+                    onChange={(e) => handleReassignSurface(currentEvidence.id, e.target.value as SurfaceType)}
+                    disabled={isReassigning}
+                    aria-label="Reassign to panel"
+                    className="px-2.5 py-1.5 bg-white border border-[#CBD5E1] rounded-lg text-xs font-semibold text-[#1E293B] cursor-pointer"
+                  >
+                    {surfaces.map(s => (
+                      <option key={s.id} value={s.id}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           </div>
         ) : (
-          <div className="border-2 border-dashed border-[#CBD5E1] rounded-xl p-10 text-center bg-white space-y-4">
+          <div className="border-2 border-dashed border-[#CBD5E1] rounded-xl p-8 text-center bg-white space-y-4">
             <div className="w-12 h-12 rounded-full bg-[#EBF3FA] text-[#174A7E] flex items-center justify-center mx-auto border border-[#CBD5E1]">
               <ImageIcon className="w-6 h-6 stroke-[1.5]" />
             </div>
             <div>
               <div className="font-bold text-xs text-[#1E293B]">
-                No image captured for {selectedSurface} panel
+                No photo uploaded for {surfaces.find(s => s.id === selectedSurface)?.label}
               </div>
               <div className="text-[11px] text-[#64748B] mt-0.5 max-w-sm mx-auto">
                 Ensure packaging text is well-lit, non-reflective, and in sharp focus for RapidOCR extraction.
@@ -266,45 +329,40 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
             {isUploading && (
               <div className="text-xs text-[#174A7E] font-bold flex items-center justify-center gap-2 animate-pulse pt-2">
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Running OpenCV blur & clarity diagnostics...</span>
+                <span>Processing image & checking visual clarity...</span>
               </div>
             )}
           </div>
         )}
 
-        {/* Legal Metrology Statutory Requirements Alert */}
-        <div className="p-4 bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl text-xs flex items-start gap-3">
-          <div className="p-1.5 bg-[#DBEAFE] text-[#1E40AF] rounded-lg mt-0.5">
-            <CheckCircle2 className="w-4 h-4" />
+        {/* Legal Metrology Statutory Requirements Alert Banner */}
+        <div className={`p-4 rounded-xl text-xs flex items-start gap-3 border ${
+          !hasBack && hasFront
+            ? 'bg-[#FFFBEB] border-[#FDE68A] text-[#92400E]'
+            : 'bg-[#EFF6FF] border-[#BFDBFE] text-[#1E40AF]'
+        }`}>
+          <div className={`p-1.5 rounded-lg mt-0.5 shrink-0 ${
+            !hasBack && hasFront ? 'bg-[#FEF3C7] text-[#B45309]' : 'bg-[#DBEAFE] text-[#1E40AF]'
+          }`}>
+            {!hasBack && hasFront ? <AlertTriangle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
           </div>
           <div className="space-y-1">
-            <div className="font-bold text-[#1E3A8A]">
-              Mandatory Evidence Surfaces (Rule 6, Legal Metrology Packaged Commodities Rules)
+            <div className="font-bold">
+              Mandatory Surfaces under Legal Metrology Rules (Rule 6, PCR 2011)
             </div>
-            <div className="text-[#1E40AF] text-[11px]">
-              Both <strong>Front Panel (PDP)</strong> and <strong>Back Panel (BIP)</strong> must be uploaded to extract mandatory statutory declarations (Net Qty, MRP, Mfg Date, Name/Address, Customer Care).
+            <div className="text-[11px] leading-relaxed">
+              {!hasBack && hasFront ? (
+                <>
+                  <strong>Back Information Panel (BIP) missing:</strong> MRP, Date of Packaging, Manufacturer Details, and Consumer Care are on the Back Panel. You can continue to AI analysis, but the system will require the Back Panel before final Digital Signature approval.
+                </>
+              ) : (
+                <>
+                  Both <strong>Front Panel (PDP)</strong> and <strong>Back Panel (BIP)</strong> are required for complete statutory compliance verification.
+                </>
+              )}
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Evidence Completion Summary Banner */}
-      <div className="p-4 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl flex items-center justify-between text-xs">
-        <div className="flex items-center gap-2">
-          {isReadyForAnalysis ? (
-            <CheckCircle2 className="w-4 h-4 text-[#15803D]" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 text-[#D97706]" />
-          )}
-          <span className="font-semibold text-[#1E293B]">
-            {isReadyForAnalysis 
-              ? 'Required package evidence captured. Ready for AI metrology analysis.'
-              : 'Please capture at least the Front Panel (PDP) before continuing.'}
-          </span>
-        </div>
-        <span className="text-[11px] text-[#64748B]">
-          {totalUploaded} surface{totalUploaded === 1 ? '' : 's'} recorded
-        </span>
       </div>
 
       {/* Navigation Actions */}
@@ -312,7 +370,7 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
         <button
           type="button"
           onClick={onBack}
-          className="px-5 py-2.5 bg-white border border-[#CBD5E1] hover:bg-[#F8FAFC] text-[#475569] font-bold rounded-lg text-xs transition flex items-center gap-1.5"
+          className="px-5 py-2.5 bg-white border border-[#CBD5E1] hover:bg-[#F8FAFC] text-[#475569] font-bold rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Product</span>
@@ -320,7 +378,7 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
 
         <button
           type="button"
-          onClick={onContinue}
+          onClick={handleContinueClick}
           disabled={!isReadyForAnalysis || isAnalyzing}
           className="px-6 py-2.5 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-lg text-xs transition shadow-xs flex items-center gap-2 disabled:opacity-50 cursor-pointer"
         >
@@ -338,6 +396,60 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
         </button>
       </div>
 
+      {/* Missing Back Panel Warning Modal */}
+      {showMissingBackModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-[#D8DDE3] space-y-5">
+            <div className="w-12 h-12 rounded-full bg-[#FEF3C7] text-[#D97706] flex items-center justify-center mx-auto border border-[#FDE68A]">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-base font-bold text-[#1E293B]">
+                Back Panel (BIP) Not Captured
+              </h3>
+              <p className="text-xs text-[#64748B] leading-relaxed">
+                Under the <strong>Legal Metrology Packaged Commodities Rules (Rule 6)</strong>, mandatory declarations such as <strong>MRP, Manufacturing Date, Customer Care, and Manufacturer Address</strong> are located on the Back Information Panel.
+              </p>
+            </div>
+
+            <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl text-xs space-y-1 text-[#475569]">
+              <div className="font-semibold text-[#1E293B]">What will happen:</div>
+              <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
+                <li>AI will analyze the Front Panel declarations (Net Qty, Brand, Commodity).</li>
+                <li>At Step 5 (Sign & Approve), you will be prompted to supply the Back photo to complete statutory sign-off.</li>
+              </ul>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMissingBackModal(false);
+                  setSelectedSurface('BACK');
+                }}
+                className="w-full sm:w-1/2 px-4 py-2.5 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-xl text-xs transition shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Camera className="w-4 h-4" />
+                <span>Capture Back Panel</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMissingBackModal(false);
+                  onContinue();
+                }}
+                className="w-full sm:w-1/2 px-4 py-2.5 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#475569] font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>Proceed with Front Only</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Full Size Preview Modal */}
       {previewEvidence && (
         <EvidencePreviewModal
@@ -351,3 +463,4 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
     </div>
   );
 };
+

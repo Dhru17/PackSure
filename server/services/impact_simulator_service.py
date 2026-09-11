@@ -126,8 +126,21 @@ class RegulatoryImpactSimulatorService:
             if applicability.get("is_imported") is True and not pr.is_imported:
                 is_match = False
 
-            impact_status = "POTENTIALLY_AFFECTED" if is_match else "NO_IMPACT_IDENTIFIED"
-            reassessment_reason = "Product belongs to governed category and matches regulatory criteria." if is_match else "Exempt from specific conditional scope (e.g. domestic origin)."
+            # Check historical and active audits for this product
+            latest_case = InspectionCase.query.filter_by(product_id=pr.id).order_by(InspectionCase.created_at.desc()).first()
+
+            if not is_match:
+                impact_status = "CONDITIONALLY_EXEMPT"
+                reassessment_reason = "Exempt from specific conditional scope (domestic origin / non-regulated packaging format)."
+            elif latest_case and latest_case.status in [CaseStatus.RETURNED, CaseStatus.SENIOR_REVIEW, CaseStatus.INSPECTOR_REVIEW]:
+                impact_status = "REQUIRES_REINSPECTION"
+                reassessment_reason = f"Active audit ({latest_case.case_number}) in progress or returned; packaging declarations require officer verification against updated {rule.rule_code if rule else 'rule'} standards."
+            elif latest_case and latest_case.final_decision and "COMPLIANT" in str(latest_case.final_decision):
+                impact_status = "VERIFIED_COMPLIANT"
+                reassessment_reason = f"Previous audit ({latest_case.case_number}) verified compliant; baseline declarations verified."
+            else:
+                impact_status = "PENDING_VERIFICATION"
+                reassessment_reason = f"Packaged commodity in regulated category [{pr.category.name if pr.category else 'General'}]; pending field inspection verification under {rule.rule_code if rule else 'amended standards'}."
 
             products_data.append({
                 "id": pr.id,
@@ -143,7 +156,9 @@ class RegulatoryImpactSimulatorService:
                 "package_type": pr.package_type,
                 "is_imported": pr.is_imported,
                 "impact_status": impact_status,
-                "reassessment_reason": reassessment_reason
+                "reassessment_reason": reassessment_reason,
+                "latest_case_number": latest_case.case_number if latest_case else None,
+                "latest_case_status": latest_case.status.value if (latest_case and hasattr(latest_case.status, "value")) else (str(latest_case.status) if latest_case else None)
             })
 
         audits_data = []
@@ -179,20 +194,34 @@ class RegulatoryImpactSimulatorService:
                 "validation_logic_type": rule.validation_logic_type
             }
 
-        # Filter strictly affected products count for summary
-        strictly_affected_products = [p for p in products_data if p["impact_status"] == "POTENTIALLY_AFFECTED"]
+        # Filter strictly affected products count for summary (in scope products)
+        in_scope_products = [p for p in products_data if p["impact_status"] != "CONDITIONALLY_EXEMPT"]
+
+        ai_narrative = (
+            f"Regulatory amendment for {rule.rule_code if rule else 'Rule'} impacts {len(categories_data)} commodity category trees, "
+            f"affecting {len(companies_data)} registered manufacturers across {len(plants_data)} manufacturing facilities. "
+            f"A total of {len(in_scope_products)} packaged products are in active scope ({len([p for p in products_data if p['impact_status'] == 'REQUIRES_REINSPECTION'])} requiring immediate re-inspection, "
+            f"{len([p for p in products_data if p['impact_status'] == 'PENDING_VERIFICATION'])} pending field verification, and "
+            f"{len([p for p in products_data if p['impact_status'] == 'VERIFIED_COMPLIANT'])} verified compliant under baseline rules). "
+            f"{len(audits_data)} active/upcoming inspection audits must be evaluated under the effective date ({effective_date})."
+        )
 
         return {
             "simulation_timestamp": datetime.now(timezone.utc).isoformat(),
             "effective_date": effective_date.isoformat() if hasattr(effective_date, "isoformat") else str(effective_date),
             "rule": rule_info,
+            "ai_impact_narrative": ai_narrative,
             "summary": {
                 "affected_categories_count": len(categories_data),
                 "affected_companies_count": len(companies_data),
                 "affected_plants_count": len(plants_data),
-                "affected_products_count": len(strictly_affected_products),
+                "affected_products_count": len(in_scope_products),
                 "total_scoped_products_count": len(products_data),
-                "affected_upcoming_audits_count": len(audits_data)
+                "affected_upcoming_audits_count": len(audits_data),
+                "requires_reinspection_count": len([p for p in products_data if p['impact_status'] == 'REQUIRES_REINSPECTION']),
+                "pending_verification_count": len([p for p in products_data if p['impact_status'] == 'PENDING_VERIFICATION']),
+                "verified_compliant_count": len([p for p in products_data if p['impact_status'] == 'VERIFIED_COMPLIANT']),
+                "conditionally_exempt_count": len([p for p in products_data if p['impact_status'] == 'CONDITIONALLY_EXEMPT'])
             },
             "affected_categories": categories_data,
             "affected_companies": companies_data,
