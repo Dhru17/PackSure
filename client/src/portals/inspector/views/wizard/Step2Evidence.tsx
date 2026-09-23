@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { InspectionCase, SurfaceType, PackageEvidence } from '../../../../types';
 import { api } from '../../../../services/api';
 import { EvidencePreviewModal } from './EvidencePreviewModal';
+import { LiveCameraModal } from '../../../../components/ui';
 import { 
   Camera, 
   Upload, 
@@ -35,6 +36,7 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
   const [isReassigning, setIsReassigning] = useState(false);
   const [previewEvidence, setPreviewEvidence] = useState<PackageEvidence | null>(null);
   const [showMissingBackModal, setShowMissingBackModal] = useState(false);
+  const [isLiveCameraOpen, setIsLiveCameraOpen] = useState(false);
 
   const surfaces: { id: SurfaceType; label: string; shortLabel: string; isRequired: boolean; desc: string }[] = [
     { id: 'FRONT', label: 'Front Panel (PDP)', shortLabel: 'Front', isRequired: true, desc: 'Principal Display Panel: Brand name, product title, net quantity' },
@@ -63,6 +65,24 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
       onEvidenceUpdated(updated);
     } catch (err: any) {
       alert(`Upload failed: ${err.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleLiveCameraCapture = async (file: File) => {
+    setIsLiveCameraOpen(false);
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('surface_type', selectedSurface);
+
+    setIsUploading(true);
+    try {
+      await api.uploadEvidence(c.id, formData);
+      const updated = await api.getInspection(c.id);
+      onEvidenceUpdated(updated);
+    } catch (err: any) {
+      alert(`Capture upload failed: ${err.message}`);
     } finally {
       setIsUploading(false);
     }
@@ -265,19 +285,28 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
               </div>
 
               {/* Reassign Panel Selector dropdown */}
-              <div className="flex flex-wrap items-center gap-3 pt-1">
+              <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => setPreviewEvidence(currentEvidence)}
-                  className="px-3.5 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#174A7E] font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-1.5"
+                  className="px-3.5 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#174A7E] font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <Eye className="w-4 h-4" />
                   <span>View Photo</span>
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => setIsLiveCameraOpen(true)}
+                  className="px-3.5 py-2 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-800 font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Camera className="w-4 h-4 text-indigo-700" />
+                  <span>Retake with Camera</span>
+                </button>
+
                 <label className="px-3.5 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#475569] font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-1.5 cursor-pointer">
                   <RotateCcw className="w-4 h-4" />
-                  <span>Replace Photo</span>
+                  <span>Upload Replacement</span>
                   <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                 </label>
 
@@ -312,17 +341,20 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-center gap-3 pt-2">
-              <label className="px-5 py-2.5 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-lg text-xs shadow-xs transition flex items-center gap-2 cursor-pointer">
-                <Upload className="w-4 h-4" />
-                <span>Upload Image</span>
-                <input type="file" accept="image/*" onChange={handleFileUpload} disabled={isUploading} className="hidden" />
-              </label>
-
-              <label className="px-5 py-2.5 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#174A7E] font-bold rounded-lg text-xs shadow-2xs transition flex items-center gap-2 cursor-pointer">
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsLiveCameraOpen(true)}
+                className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs shadow-md shadow-indigo-600/20 transition flex items-center justify-center gap-2 cursor-pointer"
+              >
                 <Camera className="w-4 h-4" />
-                <span>Capture Photo</span>
-                <input type="file" accept="image/*" capture="environment" onChange={handleFileUpload} disabled={isUploading} className="hidden" />
+                <span>Take Photo (Webcam / Camera)</span>
+              </button>
+
+              <label className="w-full sm:w-auto px-5 py-2.5 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#174A7E] font-bold rounded-xl text-xs shadow-2xs transition flex items-center justify-center gap-2 cursor-pointer">
+                <Upload className="w-4 h-4" />
+                <span>Upload Image File</span>
+                <input type="file" accept="image/*" onChange={handleFileUpload} disabled={isUploading} className="hidden" />
               </label>
             </div>
 
@@ -458,6 +490,17 @@ export const Step2Evidence: React.FC<Step2EvidenceProps> = ({
           imagePath={previewEvidence.storage_path}
           surfaceName={previewEvidence.surface_type}
           title={`${previewEvidence.surface_type} Panel Evidence`}
+        />
+      )}
+
+      {/* Live Webcam / Camera Capture Modal */}
+      {isLiveCameraOpen && (
+        <LiveCameraModal
+          title={`Capture ${surfaces.find(s => s.id === selectedSurface)?.label || selectedSurface}`}
+          subtitle="Align the packaging panel within the viewfinder grid and take photo for RapidOCR"
+          surfaceLabel={surfaces.find(s => s.id === selectedSurface)?.shortLabel || selectedSurface}
+          onCapture={handleLiveCameraCapture}
+          onClose={() => setIsLiveCameraOpen(false)}
         />
       )}
     </div>

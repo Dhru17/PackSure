@@ -565,17 +565,15 @@ export const Step4Compliance: React.FC<Step4ComplianceProps> = ({
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-2 self-end sm:self-start flex-shrink-0">
-                        {doc.file_url && (
-                          <a
-                            href={doc.file_url.startsWith('http') ? doc.file_url : `${api.getMediaUrl(doc.file_url)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="px-3 py-1.5 bg-white border border-[#CBD5E1] hover:bg-[#F8FAFC] text-[#174A7E] rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            <span>View Cert</span>
-                          </a>
-                        )}
+                        <a
+                          href={api.getCompanyDocumentDownloadUrl(doc.id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 bg-white border border-[#CBD5E1] hover:bg-[#F8FAFC] text-[#174A7E] rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-2xs"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>View Cert</span>
+                        </a>
 
                         <button
                           type="button"

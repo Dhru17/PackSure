@@ -26,14 +26,24 @@ export const LoginView: React.FC = () => {
     }
   };
 
-  const handleQuickLogin = (roleEmail: string) => {
+  const handleQuickLogin = async (roleEmail: string) => {
     setEmail(roleEmail);
-    if (roleEmail.includes('inspector')) setPassword('Inspector#2026');
-    else if (roleEmail.includes('senior')) setPassword('Senior#2026');
-    else if (roleEmail.includes('admin')) setPassword('Admin#2026');
-    else if (roleEmail.includes('britannia') || roleEmail.includes('company')) setPassword('Company#2026');
-    else setPassword('Inspector#2026');
+    let pwd = 'Password@123';
+    if (roleEmail.includes('inspector')) pwd = 'Inspector#2026';
+    else if (roleEmail.includes('senior')) pwd = 'Senior#2026';
+    else if (roleEmail.includes('admin')) pwd = 'Admin#2026';
+    else if (roleEmail.includes('abcfoods') || roleEmail.includes('britannia') || roleEmail.includes('company') || roleEmail.includes('pqr') || roleEmail.includes('xyz')) pwd = 'Company#2026';
+    
+    setPassword(pwd);
     setError(null);
+    setIsLoading(true);
+    try {
+      await login(roleEmail, pwd);
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -147,7 +157,7 @@ export const LoginView: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickLogin('compliance@britannia.co.in')}
+                onClick={() => handleQuickLogin('compliance@abcfoods.com')}
                 className="px-2 py-2 text-xs font-semibold rounded-lg bg-[#F5F3FF] hover:bg-[#EDE9FE] border border-[#DDD6FE] text-[#6B21A8] transition text-center cursor-pointer"
               >
                 🏢 Company

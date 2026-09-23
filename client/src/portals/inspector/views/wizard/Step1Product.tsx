@@ -18,6 +18,7 @@ import {
   Plus
 } from 'lucide-react';
 import { LiveBarcodeScanner } from './LiveBarcodeScanner';
+import { LiveCameraModal } from '../../../../components/ui';
 
 interface Step1ProductProps {
   products: Product[];
@@ -124,15 +125,13 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
   };
 
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  const [isLiveCameraModalOpen, setIsLiveCameraModalOpen] = useState(false);
   const [capturedImagePreview, setCapturedImagePreview] = useState<string | null>(null);
   const [imageAnalysisMessage, setImageAnalysisMessage] = useState<string | null>(null);
   const [imageDetectedTokens, setImageDetectedTokens] = useState<string[]>([]);
 
-  // Real AI OCR & Barcode Image identification
-  const handleImageCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const file = e.target.files[0];
-
+  // Core processing function for image identification (from file upload or live camera capture)
+  const processImageFile = async (file: File) => {
     // Local thumbnail preview
     const previewUrl = URL.createObjectURL(file);
     setCapturedImagePreview(previewUrl);
@@ -179,6 +178,19 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
     } finally {
       setIsAnalyzingImage(false);
     }
+  };
+
+  // Real AI OCR & Barcode Image identification via file input
+  const handleImageCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    await processImageFile(file);
+  };
+
+  // Handle image capture from live camera modal
+  const handleLiveCameraCapture = async (file: File) => {
+    setIsLiveCameraModalOpen(false);
+    await processImageFile(file);
   };
 
   const isFormValid = Boolean(
@@ -432,19 +444,16 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
               </div>
 
               {/* Action Buttons */}
-              <div className="flex items-center gap-2">
-                <label className="px-4 py-2 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIsLiveCameraModalOpen(true)}
+                  disabled={isAnalyzingImage}
+                  className="px-4 py-2 bg-[#174A7E] hover:bg-[#133E68] text-white font-bold rounded-xl text-xs cursor-pointer shadow-xs transition flex items-center gap-2"
+                >
                   <Camera className="w-3.5 h-3.5" />
-                  <span>Take Photo</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleImageCapture}
-                    disabled={isAnalyzingImage}
-                    className="hidden"
-                  />
-                </label>
+                  <span>Take Photo (Camera / Webcam)</span>
+                </button>
 
                 <label className="px-4 py-2 bg-white border border-[#CBD5E1] hover:bg-[#F1F5F9] text-[#174A7E] font-bold rounded-xl text-xs cursor-pointer shadow-2xs transition flex items-center gap-2">
                   <Upload className="w-3.5 h-3.5" />
@@ -517,17 +526,29 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
                   )}
                 </div>
 
-                <label className="px-3.5 py-1.5 text-xs font-semibold text-[#64748B] hover:text-[#174A7E] hover:bg-[#F8FAFC] border border-[#CBD5E1] rounded-lg cursor-pointer transition flex items-center gap-1.5 flex-shrink-0">
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Change Photo</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageCapture}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsLiveCameraModalOpen(true)}
                     disabled={isAnalyzingImage}
-                    className="hidden"
-                  />
-                </label>
+                    className="px-3.5 py-1.5 text-xs font-semibold text-[#174A7E] bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg cursor-pointer transition flex items-center gap-1.5"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Retake Photo</span>
+                  </button>
+
+                  <label className="px-3 py-1.5 text-xs font-semibold text-[#64748B] hover:text-[#174A7E] hover:bg-[#F8FAFC] border border-[#CBD5E1] rounded-lg cursor-pointer transition flex items-center gap-1.5">
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Upload File</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageCapture}
+                      disabled={isAnalyzingImage}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
               </div>
             )}
           </div>
@@ -783,6 +804,17 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
             handleManualProductEntry();
           }}
           onClose={() => setIsLiveScannerOpen(false)}
+        />
+      )}
+
+      {/* Live Camera Package Photo Modal for Visual Identification */}
+      {isLiveCameraModalOpen && (
+        <LiveCameraModal
+          title="Capture Package Front Photo"
+          instruction="Position the front of the packaged commodity inside the guidelines. Ensure the product brand, commodity title, net quantity, and MRP are clearly visible and well-lit."
+          panelName="Front PDP"
+          onCapture={handleLiveCameraCapture}
+          onClose={() => setIsLiveCameraModalOpen(false)}
         />
       )}
     </div>

@@ -31,6 +31,7 @@ class Notification(db.Model):
             "title": self.title,
             "message": self.message,
             "notification_type": self.notification_type,
+            "type": self.notification_type,
             "is_read": self.is_read,
             "action_link": self.action_link,
             "created_at": self.created_at.isoformat() if self.created_at else None

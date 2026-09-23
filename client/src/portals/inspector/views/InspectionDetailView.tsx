@@ -359,17 +359,15 @@ export const InspectionDetailView: React.FC<InspectionDetailViewProps> = ({
                         )}
                       </td>
                       <td className="px-6 py-3.5 text-right">
-                        {doc.file_url && (
-                          <a
-                            href={doc.file_url.startsWith('http') ? doc.file_url : `${api.getMediaUrl(doc.file_url)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-[#174A7E] hover:bg-[#EFF6FF] rounded-lg border border-[#BFDBFE] transition"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            <span>View</span>
-                          </a>
-                        )}
+                        <a
+                          href={api.getCompanyDocumentDownloadUrl(doc.id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-[#174A7E] hover:bg-[#EFF6FF] rounded-lg border border-[#BFDBFE] transition"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>View</span>
+                        </a>
                       </td>
                     </tr>
                   );

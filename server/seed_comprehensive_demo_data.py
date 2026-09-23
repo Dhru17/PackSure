@@ -27,6 +27,8 @@ from models import (
     CompanyDocument, DocumentStatus,
     Notification
 )
+from services.report_generator import ReportGenerator
+from config import Config
 
 def seed_comprehensive_data():
     app = create_app()
@@ -108,7 +110,7 @@ def seed_comprehensive_data():
         users_config = [
             {
                 "email": "admin@legalmetrology.gov.in",
-                "password": "Password@123",
+                "password": "Admin#2026",
                 "name": "Dr. Rajesh Sharma (Director General)",
                 "role": UserRole.ADMIN,
                 "district": "New Delhi",
@@ -116,23 +118,39 @@ def seed_comprehensive_data():
             },
             {
                 "email": "senior.gujarat@legalmetrology.gov.in",
-                "password": "Password@123",
+                "password": "Senior#2026",
                 "name": "Vikram Desai (Senior Controller)",
                 "role": UserRole.SENIOR_OFFICER,
                 "district": "Ahmedabad",
                 "badge_number": "LM-SR-GJ-101"
             },
             {
+                "email": "senior@legalmetrology.gov.in",
+                "password": "Senior#2026",
+                "name": "Vikram Desai (Senior Controller)",
+                "role": UserRole.SENIOR_OFFICER,
+                "district": "Ahmedabad",
+                "badge_number": "LM-SR-GJ-100"
+            },
+            {
                 "email": "inspector.gujarat@legalmetrology.gov.in",
-                "password": "Password@123",
+                "password": "Inspector#2026",
                 "name": "Priya Mehta (Legal Metrology Officer)",
                 "role": UserRole.INSPECTOR,
                 "district": "Ahmedabad",
                 "badge_number": "LMO-GJ-4042"
             },
             {
+                "email": "inspector@legalmetrology.gov.in",
+                "password": "Inspector#2026",
+                "name": "Priya Mehta (Legal Metrology Officer)",
+                "role": UserRole.INSPECTOR,
+                "district": "Ahmedabad",
+                "badge_number": "LMO-GJ-4040"
+            },
+            {
                 "email": "inspector.surat@legalmetrology.gov.in",
-                "password": "Password@123",
+                "password": "Inspector#2026",
                 "name": "Amit Patel (Field Inspector)",
                 "role": UserRole.INSPECTOR,
                 "district": "Surat",
@@ -140,11 +158,19 @@ def seed_comprehensive_data():
             },
             {
                 "email": "compliance@abcfoods.com",
-                "password": "Password@123",
+                "password": "Company#2026",
                 "name": "Ananya Sen (Compliance Head - ABC Foods)",
                 "role": UserRole.COMPANY,
                 "district": "Ahmedabad",
                 "badge_number": "CORP-ABC-01"
+            },
+            {
+                "email": "compliance@britannia.co.in",
+                "password": "Company#2026",
+                "name": "Rajesh Nambiar (Regulatory Compliance Manager)",
+                "role": UserRole.COMPANY,
+                "district": "Ahmedabad",
+                "badge_number": "CORP-BRIT-01"
             }
         ]
 
@@ -160,9 +186,15 @@ def seed_comprehensive_data():
                     badge_number=u_cfg["badge_number"],
                     is_active=True
                 )
-                u.set_password(u_cfg["password"])
                 db.session.add(u)
                 db.session.flush()
+            else:
+                u.full_name = u_cfg["name"]
+                u.role = u_cfg["role"]
+                u.jurisdiction_district = u_cfg["district"]
+                u.badge_number = u_cfg["badge_number"]
+                u.is_active = True
+            u.set_password(u_cfg["password"])
             users[u_cfg["email"]] = u
         db.session.commit()
 
@@ -195,6 +227,18 @@ def seed_comprehensive_data():
                 "plants": [
                     {"name": "Sanand Automated Packaging Plant", "code": "PLANT-SANAND-01", "city": "Ahmedabad", "state": "Gujarat", "jur": "GUJ-AHM"},
                     {"name": "Naroda Confectionery Unit", "code": "PLANT-NARODA-02", "city": "Ahmedabad", "state": "Gujarat", "jur": "GUJ-AHM"}
+                ]
+            },
+            {
+                "reg": "LMPC/GJ/2025/00112",
+                "name": "Britannia Industries Ltd.",
+                "legal": "Britannia Industries Limited",
+                "email": "compliance@britannia.co.in",
+                "city": "Ahmedabad",
+                "state": "Gujarat",
+                "importer": False,
+                "plants": [
+                    {"name": "Ahmedabad Bakery Unit", "code": "PLANT-BRIT-AHM-01", "city": "Ahmedabad", "state": "Gujarat", "jur": "GUJ-AHM"}
                 ]
             },
             {
@@ -245,11 +289,15 @@ def seed_comprehensive_data():
                 db.session.flush()
             mfg_map[c_data["name"]] = mfg
 
-            # Link Company User to ABC Foods
+            # Link Company Users to their company profiles
             if c_data["name"] == "ABC Foods Pvt. Ltd.":
                 u_comp = users.get("compliance@abcfoods.com")
                 if u_comp:
                     u_comp.company_id = mfg.id
+            elif c_data["name"] == "Britannia Industries Ltd.":
+                u_brit = users.get("compliance@britannia.co.in")
+                if u_brit:
+                    u_brit.company_id = mfg.id
 
             # Add Plants
             for p_info in c_data["plants"]:
@@ -278,31 +326,56 @@ def seed_comprehensive_data():
         # 6. COMPANY STATUTORY DOCUMENTS
         # -------------------------------------------------------------
         print("6. Seeding Company Statutory Documents...")
-        abc_mfg = mfg_map["ABC Foods Pvt. Ltd."]
+        abc_mfg = mfg_map.get("ABC Foods Pvt. Ltd.")
+        brit_mfg = mfg_map.get("Britannia Industries Ltd.")
         sanand_plant = plant_map.get("PLANT-SANAND-01")
+        brit_plant = plant_map.get("PLANT-BRIT-AHM-01")
+
         doc_configs = [
-            {"type": "LMPC_CERTIFICATE", "title": "Legal Metrology Rule 27 Pre-Packer Registration", "num": "LMPC/REG/GJ/2026/00912", "status": DocumentStatus.VERIFIED, "notes": "Registered manufacturer and packer of edible products under LMPC 2011."},
-            {"type": "FSSAI_LICENSE", "title": "FSSAI Central Manufacturing License", "num": "FSSAI-10019021004812", "status": DocumentStatus.VERIFIED, "notes": "FSSAI License valid up to 31-Dec-2028 for bakery & snack products."},
-            {"type": "POLLUTION_CONSENT", "title": "Gujarat Pollution Control Board Consent (CC&A)", "num": "GPCB/CCA/AHM/2025/1102", "status": DocumentStatus.VERIFIED, "notes": "Consent to operate industrial packaging line in Sanand."},
-            {"type": "FACTORY_LICENSE", "title": "Chief Inspector of Factories Operating License", "num": "CIF/GJ/2026/4401", "status": DocumentStatus.PENDING_VERIFICATION, "notes": "Annual renewal submitted; awaiting supervisory verification."},
-            {"type": "WEIGHTS_MEASURES", "title": "Legal Metrology Verification of Check-Weigher Scales", "num": "LM/VER/AHM/2026/089", "status": DocumentStatus.VERIFIED, "notes": "Calibrated electronic weighing scale valid until Nov 2026."}
+            # ABC Foods Documents
+            {"company": abc_mfg, "plant": sanand_plant, "type": "LMPC_CERTIFICATE", "title": "Legal Metrology Rule 27 Pre-Packer Registration", "num": "LMPC/REG/GJ/2026/00912", "status": DocumentStatus.VERIFIED, "notes": "Registered manufacturer and packer of edible products under LMPC 2011."},
+            {"company": abc_mfg, "plant": sanand_plant, "type": "FSSAI_LICENSE", "title": "FSSAI Central Manufacturing License", "num": "FSSAI-10019021004812", "status": DocumentStatus.VERIFIED, "notes": "FSSAI License valid up to 31-Dec-2028 for bakery & snack products."},
+            {"company": abc_mfg, "plant": sanand_plant, "type": "POLLUTION_CONSENT", "title": "Gujarat Pollution Control Board Consent (CC&A)", "num": "GPCB/CCA/AHM/2025/1102", "status": DocumentStatus.VERIFIED, "notes": "Consent to operate industrial packaging line in Sanand."},
+            {"company": abc_mfg, "plant": sanand_plant, "type": "FACTORY_LICENSE", "title": "Chief Inspector of Factories Operating License", "num": "CIF/GJ/2026/4401", "status": DocumentStatus.PENDING_VERIFICATION, "notes": "Annual renewal submitted; awaiting supervisory verification."},
+            {"company": abc_mfg, "plant": sanand_plant, "type": "WEIGHTS_MEASURES", "title": "Legal Metrology Verification of Check-Weigher Scales", "num": "LM/VER/AHM/2026/089", "status": DocumentStatus.VERIFIED, "notes": "Calibrated electronic weighing scale valid until Nov 2026."},
+            
+            # Britannia Industries Documents
+            {"company": brit_mfg, "plant": brit_plant, "type": "LMPC_CERTIFICATE", "title": "LMPC Rule 27 Pre-Packer Certificate", "num": "LMPC/REG/GJ/2025/00112", "status": DocumentStatus.VERIFIED, "notes": "Authorized manufacturer and packer of biscuits and bakery commodities."},
+            {"company": brit_mfg, "plant": brit_plant, "type": "FSSAI_LICENSE", "title": "FSSAI Central License - Ahmedabad Bakery", "num": "FSSAI-10012021001199", "status": DocumentStatus.VERIFIED, "notes": "Central FSSAI manufacturing license for biscuit product lines."}
         ]
 
+        os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+
         for d_cfg in doc_configs:
-            existing_doc = CompanyDocument.query.filter_by(company_id=abc_mfg.id, document_type=d_cfg["type"]).first()
+            comp_obj = d_cfg["company"]
+            if not comp_obj:
+                continue
+            existing_doc = CompanyDocument.query.filter_by(company_id=comp_obj.id, document_type=d_cfg["type"]).first()
             if not existing_doc:
                 doc = CompanyDocument(
-                    company_id=abc_mfg.id,
-                    plant_id=sanand_plant.id if sanand_plant else None,
+                    company_id=comp_obj.id,
+                    plant_id=d_cfg["plant"].id if d_cfg["plant"] else None,
                     document_type=d_cfg["type"],
                     title=d_cfg["title"],
                     document_number=d_cfg["num"],
                     status=d_cfg["status"],
-                    file_url=f"/uploads/documents/{abc_mfg.id}_{d_cfg['type'].lower()}.pdf",
+                    file_url=f"/uploads/documents/{comp_obj.id}_{d_cfg['type'].lower()}.pdf",
                     notes=d_cfg["notes"],
                     created_at=datetime.now(timezone.utc) - timedelta(days=15)
                 )
                 db.session.add(doc)
+                db.session.flush()
+                existing_doc = doc
+
+            # Pre-generate valid PDF certificate file on disk
+            pdf_fname = f"statutory_cert_{existing_doc.id}.pdf"
+            pdf_path = os.path.join(Config.UPLOAD_FOLDER, pdf_fname)
+            ReportGenerator.generate_statutory_certificate_pdf(existing_doc.to_dict(), pdf_path)
+
+            named_pdf = f"{comp_obj.id}_{d_cfg['type'].lower()}.pdf"
+            named_path = os.path.join(Config.UPLOAD_FOLDER, named_pdf)
+            ReportGenerator.generate_statutory_certificate_pdf(existing_doc.to_dict(), named_path)
+
         db.session.commit()
 
         # -------------------------------------------------------------
@@ -731,23 +804,131 @@ def seed_comprehensive_data():
         # 10. SYSTEM NOTIFICATIONS
         # -------------------------------------------------------------
         print("10. Seeding System Notifications...")
+        Notification.query.delete()
+        db.session.commit()
+
+        abc_mfg = mfg_map.get("ABC Foods Pvt. Ltd.")
+        brit_mfg = mfg_map.get("Britannia Industries Ltd.")
+
         notif_configs = [
-            {"user": users["senior.gujarat@legalmetrology.gov.in"], "title": "New Inspection Submitted for Review", "message": "Inspector Priya Mehta submitted Case #PS-2026-GJ-00103 for supervisory determination.", "type": "REVIEW_SUBMITTED"},
-            {"user": users["senior.gujarat@legalmetrology.gov.in"], "title": "Systemic Pattern Alert", "message": "Recurring Consumer Care non-compliance detected across 4 SKUs of ABC Foods Pvt. Ltd.", "type": "SYSTEMIC_ALERT"},
-            {"user": users["inspector.gujarat@legalmetrology.gov.in"], "title": "Upcoming Mandated Audit Assigned", "message": "Senior Officer Vikram Desai scheduled plant audit #PS-2026-GJ-00106 at Sanand Plant.", "type": "AUDIT_SCHEDULED"},
-            {"user": users["inspector.gujarat@legalmetrology.gov.in"], "title": "Case Returned for Reinspection", "message": "Case #PS-2026-GJ-00104 returned with supervisory instructions on imported labels.", "type": "CASE_RETURNED"},
-            {"user": users["compliance@abcfoods.com"], "title": "Audit Scheduled at Sanand Plant", "message": "Statutory surveillance audit #PS-2026-GJ-00106 scheduled on your manufacturing facility.", "type": "AUDIT_NOTICE"},
-            {"user": users["compliance@abcfoods.com"], "title": "Inspection Certificate Issued", "message": "Finalized Compliance Certificate generated for ABC Premium Butter Cookies (Case #PS-2026-GJ-00101).", "type": "REPORT_ISSUED"}
+            # Senior Officer Notifications
+            {
+                "user": users.get("senior.gujarat@legalmetrology.gov.in"),
+                "company_id": None,
+                "title": "New Inspection Submitted for Review",
+                "message": "Inspector Priya Mehta submitted Case #PS-2026-GJ-00103 (ABC Digestive Biscuits) for supervisory determination.",
+                "type": "REVIEW_SUBMITTED"
+            },
+            {
+                "user": users.get("senior@legalmetrology.gov.in"),
+                "company_id": None,
+                "title": "New Inspection Submitted for Review",
+                "message": "Inspector Priya Mehta submitted Case #PS-2026-GJ-00103 (ABC Digestive Biscuits) for supervisory determination.",
+                "type": "REVIEW_SUBMITTED"
+            },
+            {
+                "user": users.get("senior.gujarat@legalmetrology.gov.in"),
+                "company_id": None,
+                "title": "Systemic Pattern Alert Flagged",
+                "message": "Recurring Consumer Care non-compliance detected across 4 SKUs of ABC Foods Pvt. Ltd.",
+                "type": "SYSTEMIC_ALERT"
+            },
+
+            # Inspector Notifications
+            {
+                "user": users.get("inspector.gujarat@legalmetrology.gov.in"),
+                "company_id": None,
+                "title": "Upcoming Mandated Audit Assigned",
+                "message": "Senior Officer Vikram Desai scheduled plant audit #PS-2026-GJ-00106 at Sanand Plant.",
+                "type": "AUDIT_SCHEDULED"
+            },
+            {
+                "user": users.get("inspector@legalmetrology.gov.in"),
+                "company_id": None,
+                "title": "Upcoming Mandated Audit Assigned",
+                "message": "Senior Officer Vikram Desai scheduled plant audit #PS-2026-GJ-00106 at Sanand Plant.",
+                "type": "AUDIT_SCHEDULED"
+            },
+            {
+                "user": users.get("inspector.gujarat@legalmetrology.gov.in"),
+                "company_id": None,
+                "title": "Case Returned for Reinspection",
+                "message": "Case #PS-2026-GJ-00104 returned with supervisory instructions on imported labels.",
+                "type": "CASE_RETURNED"
+            },
+
+            # Company: ABC Foods Pvt. Ltd.
+            {
+                "user": users.get("compliance@abcfoods.com"),
+                "company_id": abc_mfg.id if abc_mfg else None,
+                "title": "Upcoming Plant Compliance Audit (Case #PS-2026-GJ-00106)",
+                "message": "Statutory surveillance audit scheduled on Sanand Automated Packaging Plant on October 15, 2026.",
+                "type": "AUDIT_SCHEDULED"
+            },
+            {
+                "user": users.get("compliance@abcfoods.com"),
+                "company_id": abc_mfg.id if abc_mfg else None,
+                "title": "Finalized Compliance Certificate Issued",
+                "message": "Legal Metrology verification complete for ABC Premium Butter Cookies (Case #PS-2026-GJ-00101). Final disposition: PASS.",
+                "type": "REPORT_FINALIZED"
+            },
+            {
+                "user": users.get("compliance@abcfoods.com"),
+                "company_id": abc_mfg.id if abc_mfg else None,
+                "title": "Statutory Document Verified",
+                "message": "LMPC Pre-Packer Certificate (#LMPC/GJ/2026/00912) has been officially verified by the Legal Metrology Department.",
+                "type": "DOCUMENT_VERIFIED"
+            },
+            {
+                "user": users.get("compliance@abcfoods.com"),
+                "company_id": abc_mfg.id if abc_mfg else None,
+                "title": "Regulatory Notice: Annual Verification Renewal",
+                "message": "Annual reverification of digital check-weighers and net quantity filling equipment is due within 30 days.",
+                "type": "WARNING"
+            },
+            {
+                "user": users.get("compliance@abcfoods.com"),
+                "company_id": abc_mfg.id if abc_mfg else None,
+                "title": "Advisory: Schedule II Mandatory Font Height",
+                "message": "Department advisory regarding mandatory font heights for Net Quantity and MRP declarations under Rule 6(1)(e).",
+                "type": "GENERAL"
+            },
+
+            # Company: Britannia Industries Ltd.
+            {
+                "user": users.get("compliance@britannia.co.in"),
+                "company_id": brit_mfg.id if brit_mfg else None,
+                "title": "Upcoming Factory Surveillance Audit",
+                "message": "Annual statutory audit scheduled for Ahmedabad Bakery Unit under Jurisdiction GUJ-AHM.",
+                "type": "AUDIT_SCHEDULED"
+            },
+            {
+                "user": users.get("compliance@britannia.co.in"),
+                "company_id": brit_mfg.id if brit_mfg else None,
+                "title": "Compliance Certificate Issued",
+                "message": "Finalized verification report generated for Good Day Butter Cookies (Compliance Score: 98%).",
+                "type": "REPORT_FINALIZED"
+            },
+            {
+                "user": users.get("compliance@britannia.co.in"),
+                "company_id": brit_mfg.id if brit_mfg else None,
+                "title": "LMPC Registration Certificate Validated",
+                "message": "Pre-Packer Manufacturer Registration LMPC/GJ/2025/00112 validated by Controller of Legal Metrology.",
+                "type": "DOCUMENT_VERIFIED"
+            }
         ]
 
         for n_cfg in notif_configs:
+            if not n_cfg["user"]:
+                continue
             notif = Notification(
                 user_id=n_cfg["user"].id,
+                company_id=n_cfg["company_id"],
                 title=n_cfg["title"],
                 message=n_cfg["message"],
                 notification_type=n_cfg["type"],
                 is_read=False,
-                created_at=datetime.now(timezone.utc) - timedelta(hours=3)
+                created_at=datetime.now(timezone.utc) - timedelta(hours=2)
             )
             db.session.add(notif)
         db.session.commit()

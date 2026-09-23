@@ -190,12 +190,17 @@ export const CompanyNotificationsView: React.FC<CompanyNotificationsViewProps> =
                 {getNotificationIcon(n.type)}
               </div>
 
-              <div className="space-y-1 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
+              <div className="space-y-1.5 flex-1">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="text-xs font-bold text-[#1E293B]">
                       {n.title}
                     </h4>
+                    {n.type && (
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                        {n.type.replace(/_/g, ' ')}
+                      </span>
+                    )}
                     {!n.is_read && (
                       <span className="w-2 h-2 rounded-full bg-[#174A7E]" />
                     )}

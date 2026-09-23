@@ -8,3 +8,4 @@ export { EmptyState } from './EmptyState';
 export { LoadingState } from './LoadingState';
 export { ConfirmModal } from './ConfirmModal';
 export { DetailDrawer } from './DetailDrawer';
+export { LiveCameraModal } from './LiveCameraModal';
