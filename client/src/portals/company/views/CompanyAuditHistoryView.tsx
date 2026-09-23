@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { api } from '../../../services/api';
 import type { CompanyNavTab } from '../components/CompanySidebar';
+import { CompanyAuditTimeline } from '../components/CompanyAuditTimeline';
+import { staticCompanyAnalytics } from '../components/CompanyAnalyticsData';
 
 interface AuditHistoryItem {
   id: number;
@@ -164,6 +166,12 @@ export const CompanyAuditHistoryView: React.FC<CompanyAuditHistoryViewProps> = (
           </button>
         </div>
       </div>
+
+      {/* Product / Audit Compliance Timeline (Demonstration Reference) */}
+      <CompanyAuditTimeline
+        timeline={staticCompanyAnalytics.auditTimeline}
+        productName="Example Product A (Wheat Flour 1kg)"
+      />
 
       {/* Filter & Search Bar */}
       <div className="bg-white border border-[#D8DDE3] rounded-2xl p-4 shadow-xs flex flex-col md:flex-row items-center gap-3">

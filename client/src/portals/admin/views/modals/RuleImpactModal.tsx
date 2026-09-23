@@ -87,14 +87,14 @@ export const RuleImpactModal: React.FC<RuleImpactModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 text-[10px] font-bold bg-[#EFF6FF] text-[#174A7E] border border-[#BFDBFE] rounded-md uppercase tracking-wider">
-                  Innovation #9
+                  Governance Planning Engine
                 </span>
                 <h3 className="font-bold text-base text-[#1E293B]">
-                  Regulatory Change Impact Simulator
+                  Regulatory Impact Simulator
                 </h3>
               </div>
               <p className="text-xs text-[#64748B] mt-0.5">
-                Deterministic scope discovery for <span className="font-semibold text-[#1E293B]">{rule.rule_code}</span> ({rule.version}) • Effective: <span className="font-semibold text-[#1E293B]">{rule.effective_from}</span>
+                Evaluate potential effect of <span className="font-semibold text-[#1E293B]">{rule.rule_code}</span> ({rule.version}) • Effective: <span className="font-semibold text-[#1E293B]">{rule.effective_from}</span>
               </p>
             </div>
           </div>

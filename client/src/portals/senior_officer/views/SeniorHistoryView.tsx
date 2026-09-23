@@ -7,6 +7,8 @@ import {
 import type { InspectionCase } from '../../../types';
 import { EmptyState, FilterBar } from '../../../components/ui';
 import { api } from '../../../services/api';
+import { ProductComplianceTimeline } from '../components/ProductComplianceTimeline';
+import { staticSeniorOfficerAnalytics } from '../components/SeniorAnalyticsData';
 
 interface SeniorHistoryViewProps {
   inspections: InspectionCase[];
@@ -62,6 +64,12 @@ export const SeniorHistoryView: React.FC<SeniorHistoryViewProps> = ({
           Total Historical Determinations: <strong className="text-[#1E293B]">{finalizedCases.length}</strong>
         </div>
       </div>
+
+      {/* Visual Product Compliance Lifecycle Timeline (Demonstration Reference) */}
+      <ProductComplianceTimeline
+        timeline={staticSeniorOfficerAnalytics.historyTimeline}
+        productTitle="Example Product X (Wheat Flour 1kg)"
+      />
 
       {/* Filter Bar */}
       <FilterBar

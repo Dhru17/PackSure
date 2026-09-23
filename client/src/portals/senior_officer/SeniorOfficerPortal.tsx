@@ -200,10 +200,11 @@ export const SeniorOfficerPortal: React.FC = () => {
             />
           )}
 
-          {/* SCREEN 4: SYSTEMIC VIOLATION INTELLIGENCE (INNOVATION #5) */}
+          {/* SCREEN 4: SYSTEMIC VIOLATION INTELLIGENCE */}
           {activeTab === 'intelligence' && (
             <SystemicIntelligenceView
               onAuditScheduled={handleAuditScheduled}
+              onNavigateToCase={handleOpenCaseForReview}
             />
           )}
 

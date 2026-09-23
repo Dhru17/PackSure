@@ -8,6 +8,7 @@ import { Step4Compliance } from './Step4Compliance';
 import { Step5Review } from './Step5Review';
 import { ReturnedInspectionView } from './ReturnedInspectionView';
 import { CheckCircle2, Circle, ArrowLeft } from 'lucide-react';
+import { InspectionCompletionStatus } from '../../components/InspectionCompletionStatus';
 
 interface InspectionWizardProps {
   products: Product[];
@@ -186,6 +187,9 @@ export const InspectionWizard: React.FC<InspectionWizardProps> = ({
           })}
         </div>
       </div>
+
+      {/* Completion Status (Subtle Visual Overview) */}
+      <InspectionCompletionStatus currentStep={wizardStep} isLive={true} />
 
       {/* STEP 1: PRODUCT IDENTIFICATION */}
       {wizardStep === 1 && (

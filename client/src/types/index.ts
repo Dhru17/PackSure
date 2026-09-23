@@ -400,6 +400,80 @@ export interface RegulatoryImpactResult {
   legal_disclaimer: string;
 }
 
+export interface SystemicEvidenceItem {
+  product_id: number;
+  product_name: string;
+  brand_name: string;
+  commodity_name: string;
+  barcode?: string;
+  category_name?: string;
+  case_id: number;
+  case_number: string;
+  case_date?: string;
+  inspector_name?: string;
+  violation_id: number;
+  violation_title: string;
+  rule_code: string;
+  rule_citation: string;
+  severity: string;
+  field_name?: string;
+  expected_value?: string;
+  detected_value?: string;
+}
+
+export interface SystemicPattern {
+  id: number;
+  pattern_code: string;
+  pattern_type: string;
+  manufacturer_id: number;
+  manufacturer_name?: string;
+  category_id?: number;
+  category_name?: string;
+  rule_code: string;
+  rule_citation: string;
+  title: string;
+  description: string;
+  severity: 'HIGH' | 'MEDIUM' | 'LOW' | string;
+  confidence_score: number;
+  occurrence_count: number;
+  affected_products_count: number;
+  affected_products: string[];
+  evidence_trail?: SystemicEvidenceItem[];
+  status: 'NEW' | 'UNDER_REVIEW' | 'CONFIRMED_PATTERN' | 'DISMISSED' | string;
+  senior_officer_notes?: string;
+  reviewed_by_name?: string;
+  reviewed_at?: string;
+  first_detected_at?: string;
+  updated_at?: string;
+}
+
+export interface SystemicOverviewData {
+  summary: {
+    detected_patterns_count: number;
+    companies_affected_count: number;
+    products_affected_count: number;
+    under_review_count: number;
+    confirmed_count: number;
+    dismissed_count: number;
+  };
+  brand_priorities: Array<{
+    manufacturer_id: number;
+    company_name: string;
+    location: string;
+    total_violations: number;
+    affected_products_count: number;
+    priority_level: 'HIGH' | 'MEDIUM' | 'LOW';
+  }>;
+  rule_trends: Array<{
+    rule_code: string;
+    rule_title: string;
+    violation_count: number;
+    companies_count: number;
+    percentage: number;
+  }>;
+  last_updated: string;
+}
+
 export interface AuditLog {
   id: number;
   case_id?: number;

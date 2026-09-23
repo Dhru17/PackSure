@@ -11,6 +11,8 @@ import {
   ChevronRight
 } from 'lucide-react';
 import type { CompanyNavTab } from '../components/CompanySidebar';
+import { CompanyDashboardAnalyticsRow } from '../components/CompanyDashboardAnalyticsRow';
+import { staticCompanyAnalytics } from '../components/CompanyAnalyticsData';
 
 interface CompanyDashboardProps {
   overviewData: any;
@@ -158,6 +160,9 @@ export const CompanyDashboard: React.FC<CompanyDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Organization Compliance & Audit Analytics (Company-Scoped Demonstration) */}
+      <CompanyDashboardAnalyticsRow analytics={staticCompanyAnalytics} />
 
       {/* Main Grid: Scheduled Audits + Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

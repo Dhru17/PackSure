@@ -10,10 +10,14 @@ import {
   Building2,
   FolderTree,
   MapPin,
-  ShieldCheck
+  ShieldCheck,
+  LayoutDashboard
 } from 'lucide-react';
-import { KpiCard } from '../../../components/ui';
 import type { User, RegulatoryRule, ProductCategory, AuditLog, Company, Plant, Jurisdiction } from '../../../types';
+import { staticAdminDashboardAnalytics } from '../components/AdminAnalyticsData';
+import { AdminMasterDataCards } from '../components/AdminMasterDataCards';
+import { AdminRulesByCategoryChart } from '../components/AdminRulesByCategoryChart';
+import { AdminRuleStatusDonutChart } from '../components/AdminRuleStatusDonutChart';
 
 interface AdminDashboardProps {
   users: User[];
@@ -37,8 +41,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   categories,
   auditLogs,
   companies,
-  plants,
-  jurisdictions,
   onNavigateTab,
   onNewCompany,
   onNewJurisdiction,
@@ -46,9 +48,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onNewRule,
   onNewCategory
 }) => {
-  const activeRulesCount = rules.filter(r => r.is_active).length;
   const inspectors = users.filter(u => u.role === 'INSPECTOR');
-  const activeInspectors = inspectors.filter(u => u.is_active);
 
   // Administrative Action Required Items
   const actionRequiredItems = [
@@ -89,88 +89,91 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
-      {/* 4 Overview KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
-          label="Enterprises & Plants"
-          value={`${companies.length} / ${plants.length}`}
-          subtext={`${companies.filter(c => c.is_active).length} active companies • ${plants.filter(p => p.is_active).length} plants`}
-          icon={<Building2 className="w-5 h-5 text-[#174A7E]" />}
-          variant="primary"
-        />
+      {/* 1. Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2E8F0] pb-4">
+        <div>
+          <div className="flex items-center gap-2 text-[#174A7E] font-bold text-xs uppercase tracking-wider mb-1">
+            <LayoutDashboard className="w-4 h-4 text-[#174A7E]" />
+            <span>Central Administration</span>
+          </div>
+          <h2 className="text-xl font-bold text-[#1E293B] tracking-tight">
+            Admin Dashboard
+          </h2>
+          <p className="text-xs text-[#64748B] mt-0.5">
+            System administration and regulatory governance overview
+          </p>
+        </div>
+      </div>
 
-        <KpiCard
-          label="Jurisdiction Zones"
-          value={jurisdictions.length}
-          subtext={`${jurisdictions.filter(j => j.is_active).length} active statutory zones`}
-          icon={<MapPin className="w-5 h-5 text-[#0F766E]" />}
-          variant="default"
-        />
+      {/* 2. Master Data Overview (5 compact statistic cards) */}
+      <div className="space-y-2.5">
+        <div className="text-xs font-bold text-[#64748B] uppercase tracking-wider px-0.5">
+          Master Data Overview
+        </div>
+        <AdminMasterDataCards metrics={staticAdminDashboardAnalytics.masterData} />
+      </div>
 
-        <KpiCard
-          label="Field Inspectors"
-          value={inspectors.length}
-          subtext={`${activeInspectors.length} active & certified officers`}
-          icon={<ShieldCheck className="w-5 h-5 text-[#15803D]" />}
-          variant="default"
+      {/* 3. Analytics Row: Rules by Category & Active vs Inactive Rules */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <AdminRulesByCategoryChart
+          data={staticAdminDashboardAnalytics.rulesByCategory}
+          onCategoryClick={() => onNavigateTab('categories')}
         />
-
-        <KpiCard
-          label="Regulatory Rule Book"
-          value={rules.length}
-          subtext={`${activeRulesCount} active versioned rules`}
-          icon={<Scale className="w-5 h-5 text-[#7C3AED]" />}
-          variant="default"
+        <AdminRuleStatusDonutChart
+          data={staticAdminDashboardAnalytics.ruleStatus}
         />
       </div>
 
-      {/* Main Grid: Action Required & Quick Actions */}
+      {/* 4. Main Grid: Action Required, Core Modules & Quick Operations */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Action Required Column */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-[#1E293B] flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-[#D97706]" />
-              <span>System Governance & Maintenance</span>
-            </h3>
-            <span className="text-[11px] font-semibold text-[#64748B]">
-              {actionRequiredItems.length} items flagged
-            </span>
-          </div>
-
+        {/* Action Required & Core Modules Column */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* Governance & Maintenance Items */}
           <div className="space-y-3">
-            {actionRequiredItems.length === 0 ? (
-              <div className="bg-white border border-[#D8DDE3] rounded-xl p-6 text-center text-[#64748B] text-xs">
-                All enterprise master data, inspector qualifications, and regulatory rules are fully up to date!
-              </div>
-            ) : (
-              actionRequiredItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-white border border-[#D8DDE3] rounded-xl p-4 shadow-xs hover:border-[#174A7E] transition-all flex items-center justify-between gap-4"
-                >
-                  <div>
-                    <h4 className="text-xs font-bold text-[#1E293B]">
-                      {item.title}
-                    </h4>
-                    <p className="text-[11px] text-[#64748B] mt-0.5">
-                      {item.description}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => onNavigateTab(item.tab)}
-                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-[#EFF6FF] text-[#174A7E] text-xs font-bold rounded-lg hover:bg-[#DBEAFE] transition-colors cursor-pointer"
-                  >
-                    <span>{item.linkText}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-[#1E293B] flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-[#D97706]" />
+                <span>System Governance & Maintenance</span>
+              </h3>
+              <span className="text-[11px] font-semibold text-[#64748B]">
+                {actionRequiredItems.length} items flagged
+              </span>
+            </div>
+
+            <div className="space-y-2.5">
+              {actionRequiredItems.length === 0 ? (
+                <div className="bg-white border border-[#D8DDE3] rounded-xl p-6 text-center text-[#64748B] text-xs">
+                  All enterprise master data, inspector qualifications, and regulatory rules are fully up to date!
                 </div>
-              ))
-            )}
+              ) : (
+                actionRequiredItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="bg-white border border-[#D8DDE3] rounded-xl p-4 shadow-xs hover:border-[#174A7E] transition-all flex items-center justify-between gap-4"
+                  >
+                    <div>
+                      <h4 className="text-xs font-bold text-[#1E293B]">
+                        {item.title}
+                      </h4>
+                      <p className="text-[11px] text-[#64748B] mt-0.5">
+                        {item.description}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => onNavigateTab(item.tab)}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-[#EFF6FF] text-[#174A7E] text-xs font-bold rounded-lg hover:bg-[#DBEAFE] transition-colors cursor-pointer"
+                    >
+                      <span>{item.linkText}</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
           {/* Quick System Navigation Cards */}
-          <div className="pt-2">
+          <div className="pt-1">
             <h3 className="text-sm font-bold text-[#1E293B] mb-3">
               Core Architectural Master Modules
             </h3>
@@ -205,13 +208,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <Scale className="w-4 h-4" />
                 </div>
                 <div className="font-bold text-xs text-[#1E293B]">Rule Book & Impact</div>
-                <div className="text-[10px] text-[#64748B] mt-0.5">Versioned rules & Innovation #9 Simulator</div>
+                <div className="text-[10px] text-[#64748B] mt-0.5">Versioned rules & impact simulator</div>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Quick Actions & Recent Activity */}
+        {/* Quick Operations & Activity Stream */}
         <div className="space-y-4">
           <h3 className="text-sm font-bold text-[#1E293B]">
             Administrative Operations

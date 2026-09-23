@@ -739,20 +739,44 @@ def senior_officer_action(case_id):
     })
 
 # ==============================================================================
-# INNOVATION #5: BRAND-WIDE SYSTEMIC VIOLATION INTELLIGENCE ENDPOINTS
+# INNOVATION #1 (SENIOR OFFICER MODULE): SYSTEMIC VIOLATION INTELLIGENCE
 # ==============================================================================
+
+@reviews_bp.route("/intelligence/overview", methods=["GET"])
+@require_role(["SENIOR_OFFICER", "ADMIN"])
+def get_systemic_intelligence_overview():
+    """
+    Returns live supervisory metrics, KPI counts, Brand Priority matrix, and Rule Trends
+    derived directly from stored historical inspection findings.
+    """
+    # Ensure patterns are synced with latest findings
+    SystemicIntelligenceService.analyze_and_sync_patterns()
+    overview_data = SystemicIntelligenceService.get_intelligence_overview()
+    return jsonify(overview_data)
 
 @reviews_bp.route("/intelligence/patterns", methods=["GET"])
 @require_role(["SENIOR_OFFICER", "ADMIN"])
 def get_systemic_patterns():
     """
     Returns detected brand-wide / product-line systemic non-compliance patterns.
-    Triggers analytical pattern discovery and returns prioritized list.
+    Triggers analytical pattern discovery and returns prioritized list with evidence trails.
     """
     status_filter = request.args.get("status")
-    patterns = SystemicIntelligenceService.analyze_and_sync_patterns()
-    if status_filter and status_filter.upper() != "ALL":
-        patterns = [p for p in patterns if p.get("status") == status_filter.upper()]
+    severity_filter = request.args.get("severity")
+    company_id = request.args.get("company_id")
+    rule_code = request.args.get("rule_code")
+    search = request.args.get("search")
+
+    # Run analysis/sync first to reflect latest inspection updates
+    SystemicIntelligenceService.analyze_and_sync_patterns()
+    
+    patterns = SystemicIntelligenceService.get_all_patterns(
+        status_filter=status_filter,
+        severity_filter=severity_filter,
+        company_id=company_id,
+        rule_code=rule_code,
+        search=search
+    )
     return jsonify({
         "patterns": patterns,
         "count": len(patterns)

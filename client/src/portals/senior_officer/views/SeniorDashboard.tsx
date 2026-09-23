@@ -13,6 +13,8 @@ import {
 } from 'lucide-react';
 import { KpiCard, EmptyState } from '../../../components/ui';
 import { ScheduleAuditModal } from '../components/ScheduleAuditModal';
+import { SeniorDashboardAnalyticsRow } from '../components/SeniorDashboardAnalyticsRow';
+import { staticSeniorOfficerAnalytics } from '../components/SeniorAnalyticsData';
 
 interface SeniorDashboardProps {
   overviewData: any;
@@ -164,6 +166,9 @@ export const SeniorDashboard: React.FC<SeniorDashboardProps> = ({
           </button>
         </div>
       )}
+
+      {/* Senior Officer Visual Analytics Row (Demonstration Data) */}
+      <SeniorDashboardAnalyticsRow analytics={staticSeniorOfficerAnalytics} />
 
       {/* Main Content Grid: Action Required & Recent Decisions */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

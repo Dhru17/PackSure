@@ -1,6 +1,8 @@
 import React from 'react';
 import type { InspectionCase } from '../../../types';
 import { StatusBadge, EmptyState } from '../../../components/ui';
+import { InspectorDashboardAnalyticsRow } from '../components/InspectorDashboardAnalyticsRow';
+import { staticInspectorAnalytics } from '../components/InspectorAnalyticsData';
 import { 
   FileText, 
   CheckCircle2, 
@@ -198,6 +200,9 @@ export const InspectorDashboard: React.FC<InspectorDashboardProps> = ({
           )}
         </div>
       )}
+
+      {/* Field Workload & Workflow Analytics Row (Demonstration Data) */}
+      <InspectorDashboardAnalyticsRow analytics={staticInspectorAnalytics} />
 
       {/* Action Required Section */}
       <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs overflow-hidden">

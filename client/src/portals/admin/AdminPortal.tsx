@@ -21,6 +21,7 @@ import { AdminUsersView } from './views/AdminUsersView';
 import { AdminUserDetailsView } from './views/AdminUserDetailsView';
 import { AdminRulesView } from './views/AdminRulesView';
 import { AdminRuleDetailsView } from './views/AdminRuleDetailsView';
+import { AdminImpactSimulatorView } from './views/AdminImpactSimulatorView';
 import { AdminCategoriesView } from './views/AdminCategoriesView';
 import { AdminCategoryDetailsView } from './views/AdminCategoryDetailsView';
 import { AdminAuditLogsView } from './views/AdminAuditLogsView';
@@ -57,6 +58,7 @@ export const AdminPortal: React.FC = () => {
   const [selectedRule, setSelectedRule] = useState<RegulatoryRule | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | null>(null);
   const [mappedCategoryRules, setMappedCategoryRules] = useState<any[]>([]);
+  const [simulatorTargetRuleId, setSimulatorTargetRuleId] = useState<number | undefined>(undefined);
 
   // Modal States
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -680,14 +682,30 @@ export const AdminPortal: React.FC = () => {
               }}
               onToggleStatus={handleToggleRuleStatus}
               onOpenImpactSimulator={(r) => {
-                setImpactModalTargetRule(r);
-                setIsImpactModalOpen(true);
+                setSimulatorTargetRuleId(r.id);
+                setActiveTab('simulator');
               }}
               onAddRequirement={(r) => {
                 setRequirementModalTargetRule(r);
                 setIsRequirementModalOpen(true);
               }}
               onDeleteRequirement={handleDeleteRequirement}
+            />
+          )}
+
+          {/* Innovation #2: Regulatory Impact Simulator Dedicated Workspace */}
+          {activeTab === 'simulator' && (
+            <AdminImpactSimulatorView
+              initialRuleId={simulatorTargetRuleId}
+              onNavigateToRule={(rId) => {
+                const targetRule = rules.find(r => r.id === rId);
+                if (targetRule) {
+                  setSelectedRule(targetRule);
+                  setActiveTab('rule_detail');
+                } else {
+                  setActiveTab('rules');
+                }
+              }}
             />
           )}
 

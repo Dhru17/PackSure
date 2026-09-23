@@ -12,6 +12,8 @@ import { ReviewStageIndicator, type ReviewStage } from '../../components/ReviewS
 import { FindingDetailsDrawer } from './FindingDetailsDrawer';
 import { ReturnModal } from './ReturnModal';
 import { FinalizeModal } from './FinalizeModal';
+import { SeniorReviewAnalyticsCard } from '../../components/SeniorReviewAnalyticsCard';
+import { staticSeniorOfficerAnalytics } from '../../components/SeniorAnalyticsData';
 
 interface SeniorReviewWorkspaceProps {
   inspectionCase: InspectionCase;
@@ -498,6 +500,12 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Contextual Visual Analytics Breakdown (Demonstration Reference) */}
+          <SeniorReviewAnalyticsCard
+            checkBreakdown={staticSeniorOfficerAnalytics.reviewBreakdown}
+            violationSeverity={staticSeniorOfficerAnalytics.violationSeverity}
+          />
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Left Column: Verified Declarations */}

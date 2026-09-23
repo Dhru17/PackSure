@@ -22,6 +22,7 @@ export type AdminNavTab =
   | 'inspectors'
   | 'users' 
   | 'rules' 
+  | 'simulator'
   | 'categories' 
   | 'audit' 
   | 'settings' 
@@ -51,7 +52,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       icon: Users,
       badge: pendingRequestsCount > 0 ? pendingRequestsCount : undefined
     },
-    { id: 'rules' as AdminNavTab, label: 'Rule Book & Impact', icon: Scale },
+    { id: 'rules' as AdminNavTab, label: 'Regulatory Rules', icon: Scale },
+    { id: 'simulator' as AdminNavTab, label: 'Impact Simulator', icon: ShieldAlert },
     { id: 'categories' as AdminNavTab, label: 'Categories', icon: FolderTree },
     { id: 'audit' as AdminNavTab, label: 'Audit Logs', icon: FileText },
     { id: 'settings' as AdminNavTab, label: 'Settings', icon: Settings },

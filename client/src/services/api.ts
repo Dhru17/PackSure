@@ -138,10 +138,21 @@ export const api = {
   submitCheckAction: (caseId: number, checkId: number, data: { action: string; override_reason?: string; statutory_justification?: string }) =>
     apiFetch<any>(`/api/reviews/${caseId}/checks/${checkId}/action`, { method: "POST", body: JSON.stringify(data) }),
 
-  // Innovation #5: Brand-Wide & Systemic Violation Intelligence
-  getSystemicPatterns: (status = "ALL") => {
-    const p = status && status !== "ALL" ? `?status=${encodeURIComponent(status)}` : "";
-    return apiFetch<{ patterns: any[]; count: number }>(`/api/reviews/intelligence/patterns${p}`);
+  // Innovation #1: Systemic Violation Intelligence (Senior Officer)
+  getSystemicOverview: () => apiFetch<any>("/api/reviews/intelligence/overview"),
+  getSystemicPatterns: (filters?: { status?: string; severity?: string; company_id?: number; rule_code?: string; search?: string } | string) => {
+    if (typeof filters === "string") {
+      const p = filters && filters !== "ALL" ? `?status=${encodeURIComponent(filters)}` : "";
+      return apiFetch<{ patterns: any[]; count: number }>(`/api/reviews/intelligence/patterns${p}`);
+    }
+    const p = new URLSearchParams();
+    if (filters?.status && filters.status !== "ALL") p.append("status", filters.status);
+    if (filters?.severity && filters.severity !== "ALL") p.append("severity", filters.severity);
+    if (filters?.company_id) p.append("company_id", String(filters.company_id));
+    if (filters?.rule_code) p.append("rule_code", filters.rule_code);
+    if (filters?.search) p.append("search", filters.search);
+    const qs = p.toString();
+    return apiFetch<{ patterns: any[]; count: number }>(`/api/reviews/intelligence/patterns${qs ? `?${qs}` : ""}`);
   },
   updateSystemicPatternAction: (patternId: number, data: { status: string; notes?: string }) =>
     apiFetch<any>(`/api/reviews/intelligence/patterns/${patternId}/action`, { method: "POST", body: JSON.stringify(data) }),
@@ -173,8 +184,6 @@ export const api = {
   markAllInspectorNotificationsRead: () =>
     apiFetch<any>("/api/inspections/notifications/read-all", { method: "POST" }),
 
-
-
   // Rules & Governance
   getRules: () => apiFetch<{ rules: any[] }>("/api/rules"),
   createRule: (data: any) => apiFetch<{ rule: any }>("/api/rules", { method: "POST", body: JSON.stringify(data) }),
@@ -186,8 +195,14 @@ export const api = {
   addRuleRequirement: (ruleId: number, data: any) => apiFetch<{ requirement: any }>(`/api/admin/rules/${ruleId}/requirements`, { method: "POST", body: JSON.stringify(data) }),
   deleteRuleRequirement: (ruleId: number, reqId: number) => apiFetch<{ message: string }>(`/api/admin/rules/${ruleId}/requirements/${reqId}`, { method: "DELETE" }),
 
-  // Innovation #9: Regulatory Change Impact Simulator
-  getRuleImpact: (ruleId: number) => apiFetch<any>(`/api/admin/rules/${ruleId}/impact`),
+  // Innovation #2: Regulatory Change Impact Simulator (Admin)
+  getRuleImpact: (ruleId: number, categoryIds?: number[], effectiveDate?: string) => {
+    const p = new URLSearchParams();
+    if (categoryIds && categoryIds.length > 0) p.append("category_ids", categoryIds.join(","));
+    if (effectiveDate) p.append("effective_date", effectiveDate);
+    const qs = p.toString();
+    return apiFetch<any>(`/api/admin/rules/${ruleId}/impact${qs ? `?${qs}` : ""}`);
+  },
   simulateRegulatoryImpact: (data: { rule_id?: number; category_ids?: number[]; effective_date?: string }) =>
     apiFetch<any>("/api/admin/rules/impact-simulate", { method: "POST", body: JSON.stringify(data) }),
 
