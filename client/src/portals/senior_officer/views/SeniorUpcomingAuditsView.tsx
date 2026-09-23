@@ -7,7 +7,9 @@ import {
   Building2,
   Clock,
   ShieldCheck,
-  Tag
+  Tag,
+  Activity,
+  Eye
 } from 'lucide-react';
 import { api } from '../../../services/api';
 import { ScheduleAuditModal } from '../components/ScheduleAuditModal';
@@ -23,7 +25,7 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
 }) => {
   const [audits, setAudits] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'UPCOMING' | 'ACTIVE'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'UPCOMING' | 'ACTIVE' | 'ALL'>('UPCOMING');
   const [searchQuery, setSearchQuery] = useState('');
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
 
@@ -39,7 +41,7 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
     setIsLoading(true);
     try {
       const res = await api.getScheduledAudits({
-        status: statusFilter,
+        status: 'ALL',
         search: searchQuery
       });
       setAudits(res.audits || []);
@@ -52,7 +54,7 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
 
   useEffect(() => {
     loadAudits();
-  }, [statusFilter]);
+  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,15 +98,25 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
     }
   };
 
-  const upcomingCount = audits.filter(
+  const upcomingAudits = audits.filter(
     (a) => a.status === 'DRAFT' || a.status === 'EVIDENCE_PENDING'
-  ).length;
-  const activeCount = audits.filter(
+  );
+  const activeAudits = audits.filter(
     (a) =>
       a.status === 'ANALYZING' ||
       a.status === 'ANALYSIS_COMPLETE' ||
       a.status === 'INSPECTOR_REVIEW'
-  ).length;
+  );
+
+  const displayedAudits =
+    statusFilter === 'UPCOMING'
+      ? upcomingAudits
+      : statusFilter === 'ACTIVE'
+      ? activeAudits
+      : audits;
+
+  const upcomingCount = upcomingAudits.length;
+  const activeCount = activeAudits.length;
 
   return (
     <div className="space-y-6">
@@ -146,16 +158,6 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
         {/* Filter Pills */}
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
-            onClick={() => setStatusFilter('ALL')}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              statusFilter === 'ALL'
-                ? 'bg-slate-900 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            All Audits ({audits.length})
-          </button>
-          <button
             onClick={() => setStatusFilter('UPCOMING')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
               statusFilter === 'UPCOMING'
@@ -174,6 +176,16 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
             }`}
           >
             In-Field Active ({activeCount})
+          </button>
+          <button
+            onClick={() => setStatusFilter('ALL')}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              statusFilter === 'ALL'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            All Audits ({audits.length})
           </button>
         </div>
 
@@ -197,12 +209,20 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
             <RotateCw className="w-6 h-6 animate-spin mx-auto mb-2 text-indigo-500" />
             Loading scheduled audits...
           </div>
-        ) : audits.length === 0 ? (
+        ) : displayedAudits.length === 0 ? (
           <div className="p-12 text-center">
             <Calendar className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <h4 className="text-base font-bold text-slate-800">No scheduled audits found</h4>
+            <h4 className="text-base font-bold text-slate-800">
+              {statusFilter === 'UPCOMING'
+                ? 'No Upcoming Scheduled Audits'
+                : statusFilter === 'ACTIVE'
+                ? 'No In-Field Active Audits'
+                : 'No Scheduled Audits Found'}
+            </h4>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Schedule an inspection audit for a factory plant to deploy an authorized field inspector.
+              {statusFilter === 'UPCOMING'
+                ? 'All scheduled audits have been initiated or completed.'
+                : 'Schedule an inspection audit for a factory plant to deploy an authorized field inspector.'}
             </p>
             <button
               onClick={() => setIsScheduleModalOpen(true)}
@@ -221,13 +241,12 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
                   <th className="px-4 py-3.5">Plant / Location</th>
                   <th className="px-4 py-3.5">Assigned Inspector</th>
                   <th className="px-4 py-3.5">Target Date</th>
-                  <th className="px-4 py-3.5">Status</th>
-                  <th className="px-4 py-3.5">Rule Version</th>
+                  {statusFilter !== 'UPCOMING' && <th className="px-4 py-3.5">Field Status</th>}
                   <th className="px-5 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {audits.map((a) => (
+                {displayedAudits.map((a) => (
                   <tr key={a.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="px-5 py-4">
                       <div>
@@ -292,45 +311,68 @@ export const SeniorUpcomingAuditsView: React.FC<SeniorUpcomingAuditsViewProps> =
                       )}
                     </td>
 
-                    <td className="px-4 py-4">
-                      <span
-                        className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
-                          a.status === 'DRAFT' || a.status === 'EVIDENCE_PENDING'
-                            ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                            : a.status === 'ANALYZING' || a.status === 'ANALYSIS_COMPLETE'
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
-                            : a.status === 'INSPECTOR_REVIEW'
-                            ? 'bg-purple-50 text-purple-700 border border-purple-200'
-                            : a.status === 'RETURNED'
-                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        }`}
-                      >
-                        {a.status}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-4">
-                      <span className="inline-flex items-center gap-1 font-mono text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                        <ShieldCheck className="w-3 h-3 text-indigo-600" />
-                        {a.rule_version || 'v2026.1_GSR128E'}
-                      </span>
-                    </td>
+                    {statusFilter !== 'UPCOMING' && (
+                      <td className="px-4 py-4">
+                        <span
+                          className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${
+                            a.status === 'ANALYZING' || a.status === 'ANALYSIS_COMPLETE'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200 animate-pulse'
+                              : a.status === 'INSPECTOR_REVIEW'
+                              ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                              : a.status === 'RETURNED'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : a.status === 'SUBMITTED' || a.status === 'SENIOR_REVIEW'
+                              ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}
+                        >
+                          {a.status.replace('_', ' ')}
+                        </span>
+                      </td>
+                    )}
 
                     <td className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleOpenReassignModal(a)}
-                          className="px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
-                        >
-                          Reassign
-                        </button>
-                        <button
-                          onClick={() => onOpenCase(a.id)}
-                          className="px-3 py-1 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                        >
-                          View Case
-                        </button>
+                        {a.status === 'DRAFT' || a.status === 'EVIDENCE_PENDING' ? (
+                          <button
+                            onClick={() => handleOpenReassignModal(a)}
+                            className="px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+                          >
+                            Reschedule / Reassign
+                          </button>
+                        ) : ['ANALYZING', 'ANALYSIS_COMPLETE', 'INSPECTOR_REVIEW'].includes(a.status) ? (
+                          <button
+                            onClick={() => onOpenCase(a.id)}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                          >
+                            <Activity className="w-3.5 h-3.5 animate-pulse" />
+                            <span>Live Progress</span>
+                          </button>
+                        ) : ['SUBMITTED', 'SENIOR_REVIEW'].includes(a.status) ? (
+                          <button
+                            onClick={() => onOpenCase(a.id)}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            <span>Review & Adjudicate</span>
+                          </button>
+                        ) : a.status === 'RETURNED' ? (
+                          <button
+                            onClick={() => onOpenCase(a.id)}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+                          >
+                            <RotateCw className="w-3.5 h-3.5" />
+                            <span>Reinspection Details</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => onOpenCase(a.id)}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View Final Record</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

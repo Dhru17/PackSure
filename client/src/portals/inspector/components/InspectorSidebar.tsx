@@ -6,12 +6,14 @@ import {
   Bell, 
   User, 
   LogOut, 
-  Scale
+  Scale,
+  Calendar
 } from 'lucide-react';
 import { useAuthStore } from '../../../state/authStore';
 
 export type InspectorNavTab = 
   | 'home' 
+  | 'upcoming_audits'
   | 'inspections' 
   | 'products' 
   | 'notifications' 
@@ -21,17 +23,26 @@ interface InspectorSidebarProps {
   activeTab: InspectorNavTab;
   onSelectTab: (tab: InspectorNavTab) => void;
   unreadNotificationsCount?: number;
+  upcomingAuditsCount?: number;
 }
 
 export const InspectorSidebar: React.FC<InspectorSidebarProps> = ({
   activeTab,
   onSelectTab,
-  unreadNotificationsCount = 0
+  unreadNotificationsCount = 0,
+  upcomingAuditsCount = 0
 }) => {
   const { logout } = useAuthStore();
 
   const navItems = [
     { id: 'home' as InspectorNavTab, label: 'Home', icon: Home },
+    { 
+      id: 'upcoming_audits' as InspectorNavTab, 
+      label: 'Upcoming Audits', 
+      icon: Calendar,
+      badge: upcomingAuditsCount > 0 ? upcomingAuditsCount : undefined,
+      badgeColor: 'bg-[#E0F2FE] text-[#0369A1] border-[#BAE6FD]'
+    },
     { id: 'inspections' as InspectorNavTab, label: 'Inspections', icon: ClipboardList },
     { id: 'products' as InspectorNavTab, label: 'Products', icon: Package },
     { 
@@ -87,7 +98,7 @@ export const InspectorSidebar: React.FC<InspectorSidebarProps> = ({
                     className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                       isActive
                         ? 'bg-white text-[#174A7E]'
-                        : 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]'
+                        : (item as any).badgeColor || 'bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA]'
                     }`}
                   >
                     {item.badge}

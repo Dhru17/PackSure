@@ -7,7 +7,8 @@ import {
   Clock, 
   RotateCcw, 
   ArrowRight, 
-  AlertTriangle
+  AlertTriangle,
+  Calendar
 } from 'lucide-react';
 
 interface InspectorDashboardProps {
@@ -28,6 +29,7 @@ interface InspectorDashboardProps {
   onOpenCase: (caseId: number) => void;
   onResumeCase: (caseId: number) => void;
   onViewAllInspections: () => void;
+  onViewUpcomingAudits?: () => void;
 }
 
 export const InspectorDashboard: React.FC<InspectorDashboardProps> = ({
@@ -35,9 +37,13 @@ export const InspectorDashboard: React.FC<InspectorDashboardProps> = ({
   inspectionsList,
   onOpenCase,
   onResumeCase,
-  onViewAllInspections
+  onViewAllInspections,
+  onViewUpcomingAudits
 }) => {
   // Extract or compute metrics
+  const scheduledAuditsCount = inspectionsList.filter(
+    c => Boolean(c.scheduled_date) && (c.status === 'DRAFT' || c.status === 'EVIDENCE_PENDING')
+  ).length;
   const activeCasesCount = overviewData 
     ? (overviewData.workload.draft_cases + overviewData.workload.in_analysis_cases) 
     : inspectionsList.filter(c => ['DRAFT', 'EVIDENCE_PENDING', 'ANALYZING'].includes(c.status)).length;
@@ -160,6 +166,38 @@ export const InspectorDashboard: React.FC<InspectorDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Upcoming Scheduled Audits Notification Banner */}
+      {scheduledAuditsCount > 0 && (
+        <div className="bg-gradient-to-r from-[#174A7E] to-[#0E355B] text-white p-4 sm:p-5 rounded-xl shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="p-2.5 bg-white/10 rounded-xl text-amber-300">
+              <Calendar className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-sm text-white">Upcoming Mandated Audits</span>
+                <span className="text-[10px] font-extrabold px-2 py-0.5 bg-amber-400 text-slate-900 rounded-full">
+                  {scheduledAuditsCount} Scheduled
+                </span>
+              </div>
+              <p className="text-xs text-slate-200 mt-0.5">
+                Senior Officers have scheduled compliance inspections for your assigned jurisdiction & category.
+              </p>
+            </div>
+          </div>
+
+          {onViewUpcomingAudits && (
+            <button
+              onClick={onViewUpcomingAudits}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-[#174A7E] rounded-lg text-xs font-bold hover:bg-slate-100 transition-colors shadow-xs flex-shrink-0"
+            >
+              <span>View Upcoming Audits</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Action Required Section */}
       <div className="bg-white rounded-xl border border-[#D8DDE3] shadow-xs overflow-hidden">

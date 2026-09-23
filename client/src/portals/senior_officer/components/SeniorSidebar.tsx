@@ -47,7 +47,7 @@ export const SeniorSidebar: React.FC<SeniorSidebarProps> = ({
       badge: pendingReviewsCount > 0 ? pendingReviewsCount : undefined 
     },
     { id: 'intelligence' as SeniorNavTab, label: 'Systemic Intelligence', icon: Sparkles },
-    { id: 'history' as SeniorNavTab, label: 'Precedent Archive', icon: History },
+    { id: 'history' as SeniorNavTab, label: 'Audit History', icon: History },
     { 
       id: 'notifications' as SeniorNavTab, 
       label: 'Alert Center', 

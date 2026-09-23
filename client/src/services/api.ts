@@ -166,6 +166,12 @@ export const api = {
   },
   updateScheduledAudit: (caseId: number, data: any) =>
     apiFetch<{ message: string; case: any }>(`/api/inspections/${caseId}/schedule`, { method: "PUT", body: JSON.stringify(data) }),
+  getInspectorNotifications: () =>
+    apiFetch<{ notifications: any[]; count: number; unread_count: number }>("/api/inspections/notifications"),
+  markInspectorNotificationRead: (notifId: number) =>
+    apiFetch<any>(`/api/inspections/notifications/${notifId}/read`, { method: "POST" }),
+  markAllInspectorNotificationsRead: () =>
+    apiFetch<any>("/api/inspections/notifications/read-all", { method: "POST" }),
 
 
 

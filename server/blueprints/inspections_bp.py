@@ -15,7 +15,7 @@ from models import (
     RegulatoryRule, ComplianceCheck, Violation, CheckStatus, ViolationSeverity,
     AuditLog, AuditActionType, User, UserRole,
     InspectorJurisdictionEligibility, InspectorCategoryEligibility,
-    CompanyDocument, DocumentStatus
+    CompanyDocument, DocumentStatus, Notification
 )
 from services.auth_service import require_auth, require_role, check_case_access
 from services.vision_analyzer import VisionAnalyzer
@@ -245,6 +245,31 @@ def schedule_audit():
     db.session.add(case)
     db.session.flush()
 
+    # 1. Create Notification for Assigned Field Inspector
+    scheduled_date_display = case.scheduled_date.strftime("%d %b %Y") if case.scheduled_date else "Upcoming"
+    plant_display = plant.name if plant else "Assigned Manufacturing Facility"
+    notif_inspector = Notification(
+        user_id=inspector.id,
+        case_id=case.id,
+        title="New Audit Scheduled & Assigned",
+        message=f"Senior Officer {g.current_user.full_name} scheduled an audit for {prod.brand_name} ({case.case_number}) at {plant_display} on {scheduled_date_display}.",
+        notification_type="AUDIT_SCHEDULED",
+        action_link=f"/inspections/{case.id}"
+    )
+    db.session.add(notif_inspector)
+
+    # 2. Create Notification for Company if applicable
+    if plant and plant.company_id:
+        notif_company = Notification(
+            company_id=plant.company_id,
+            case_id=case.id,
+            title="Upcoming Plant Compliance Audit",
+            message=f"A Legal Metrology compliance inspection has been scheduled for plant {plant.name} on {scheduled_date_display} (Case: {case.case_number}).",
+            notification_type="AUDIT_SCHEDULED",
+            action_link=f"/company/audits/{case.id}"
+        )
+        db.session.add(notif_company)
+
     # Audit Log
     audit = AuditLog(
         case_id=case.id,
@@ -273,17 +298,27 @@ def schedule_audit():
 @require_auth
 def list_scheduled_audits():
     """
-    Returns upcoming and active scheduled audits for Senior Officer supervision.
+    Returns upcoming and active scheduled audits.
+    - For Field Inspectors: filters automatically by inspector_id.
+    - For Senior Officers / Admins: returns full supervisory list.
     """
     search = request.args.get("search", "").strip()
-    status_filter = request.args.get("status", "ALL").upper()
+    status_filter = request.args.get("status", "UPCOMING").upper()
     
-    query = InspectionCase.query.order_by(InspectionCase.scheduled_date.asc(), InspectionCase.created_at.desc())
+    query = InspectionCase.query.filter(
+        InspectionCase.scheduled_date.isnot(None)
+    ).order_by(InspectionCase.scheduled_date.asc(), InspectionCase.created_at.desc())
+
+    # Role-based scoping: Inspectors only see their own assigned audits
+    if g.current_user.role == UserRole.INSPECTOR:
+        query = query.filter(InspectionCase.inspector_id == g.current_user.id)
 
     if status_filter == "UPCOMING":
         query = query.filter(InspectionCase.status.in_([CaseStatus.DRAFT, CaseStatus.EVIDENCE_PENDING]))
     elif status_filter == "ACTIVE":
         query = query.filter(InspectionCase.status.in_([CaseStatus.ANALYZING, CaseStatus.ANALYSIS_COMPLETE, CaseStatus.INSPECTOR_REVIEW]))
+    elif status_filter == "RETURNED":
+        query = query.filter(InspectionCase.status == CaseStatus.RETURNED)
     elif status_filter == "ALL":
         query = query.filter(InspectionCase.status.in_([
             CaseStatus.DRAFT, CaseStatus.EVIDENCE_PENDING,
@@ -327,6 +362,8 @@ def update_scheduled_audit(case_id):
     notes = data.get("instructions", "").strip()
 
     prev_inspector = case.inspector.full_name if case.inspector else None
+    inspector_changed = False
+
     if new_inspector_id and new_inspector_id != case.inspector_id:
         insp = db.session.get(User, new_inspector_id)
         if not insp or insp.role != UserRole.INSPECTOR or not insp.is_active:
@@ -355,6 +392,7 @@ def update_scheduled_audit(case_id):
                 return jsonify({"error": f"Inspector {insp.full_name} is not qualified for product category."}), 400
 
         case.inspector_id = insp.id
+        inspector_changed = True
 
     if new_date_str:
         try:
@@ -364,6 +402,24 @@ def update_scheduled_audit(case_id):
 
     if notes:
         case.senior_remarks = notes
+
+    # Create Notification for the assigned inspector
+    scheduled_display = case.scheduled_date.strftime("%d %b %Y") if case.scheduled_date else "Updated Date"
+    brand_display = case.product.brand_name if case.product else "Commodity"
+    notif_msg = (
+        f"Audit {case.case_number} for {brand_display} has been newly assigned to you for {scheduled_display}."
+        if inspector_changed
+        else f"Audit {case.case_number} schedule has been updated to {scheduled_display}."
+    )
+    notif = Notification(
+        user_id=case.inspector_id,
+        case_id=case.id,
+        title="Audit Reassigned / Rescheduled" if inspector_changed else "Audit Rescheduled",
+        message=notif_msg,
+        notification_type="AUDIT_RESCHEDULED",
+        action_link=f"/inspections/{case.id}"
+    )
+    db.session.add(notif)
 
     audit = AuditLog(
         case_id=case.id,
@@ -384,6 +440,51 @@ def update_scheduled_audit(case_id):
         "message": "Scheduled audit updated successfully.",
         "case": case.to_dict()
     })
+
+@inspections_bp.route("/notifications", methods=["GET"])
+@require_auth
+def list_inspector_notifications():
+    """
+    Returns live notifications for the logged-in inspector.
+    """
+    notifications = Notification.query.filter_by(
+        user_id=g.current_user.id
+    ).order_by(Notification.created_at.desc()).limit(100).all()
+
+    unread_count = Notification.query.filter_by(
+        user_id=g.current_user.id,
+        is_read=False
+    ).count()
+
+    return jsonify({
+        "notifications": [n.to_dict() for n in notifications],
+        "count": len(notifications),
+        "unread_count": unread_count
+    })
+
+@inspections_bp.route("/notifications/<int:notif_id>/read", methods=["POST"])
+@require_auth
+def mark_inspector_notification_read(notif_id):
+    """
+    Marks an inspector notification as read.
+    """
+    notif = db.session.get(Notification, notif_id)
+    if not notif or notif.user_id != g.current_user.id:
+        return jsonify({"error": "Notification not found."}), 404
+
+    notif.is_read = True
+    db.session.commit()
+    return jsonify({"message": "Notification marked as read.", "notification": notif.to_dict()})
+
+@inspections_bp.route("/notifications/read-all", methods=["POST"])
+@require_auth
+def mark_all_inspector_notifications_read():
+    """
+    Marks all notifications for current inspector as read.
+    """
+    Notification.query.filter_by(user_id=g.current_user.id, is_read=False).update({"is_read": True})
+    db.session.commit()
+    return jsonify({"message": "All notifications marked as read."})
 
 @inspections_bp.route("/overview", methods=["GET"])
 @require_auth

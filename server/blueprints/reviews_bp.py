@@ -10,7 +10,7 @@ from models import (
     FinalDisposition, AuditActionType, Violation, Product, Manufacturer,
     VerificationStatus, DeclarationFieldType, SystemicPattern, PatternStatus,
     Plant, User, PackageEvidence, SurfaceType, ComplianceCheck, CheckStatus,
-    SeniorDecision, ViolationSeverity, RegulatoryRule
+    SeniorDecision, ViolationSeverity, RegulatoryRule, Notification
 )
 from services.auth_service import require_auth, require_role, check_case_access
 from services.systemic_intelligence_service import SystemicIntelligenceService
@@ -123,12 +123,12 @@ def get_review_queue():
     query = InspectionCase.query.join(Product, Product.id == InspectionCase.product_id, isouter=True)
 
     if status_filter == "ALL":
-        query = query.filter(InspectionCase.status.in_([CaseStatus.SUBMITTED, CaseStatus.SENIOR_REVIEW]))
+        query = query.filter(InspectionCase.status.in_([CaseStatus.SUBMITTED, CaseStatus.SENIOR_REVIEW, CaseStatus.RETURNED]))
     else:
         try:
             query = query.filter(InspectionCase.status == CaseStatus(status_filter))
         except ValueError:
-            query = query.filter(InspectionCase.status.in_([CaseStatus.SUBMITTED, CaseStatus.SENIOR_REVIEW]))
+            query = query.filter(InspectionCase.status.in_([CaseStatus.SUBMITTED, CaseStatus.SENIOR_REVIEW, CaseStatus.RETURNED]))
 
     if category_id and category_id.isdigit():
         query = query.filter(Product.category_id == int(category_id))
@@ -560,6 +560,11 @@ def return_for_reinspection(case_id):
     if not case:
         return jsonify({"error": "Inspection case not found."}), 404
 
+    if case.status not in [CaseStatus.SUBMITTED, CaseStatus.SENIOR_REVIEW]:
+        return jsonify({
+            "error": f"Cannot return case #{case.case_number} for re-inspection. Only cases submitted for supervisory review (SUBMITTED / SENIOR_REVIEW) can be returned. Current status: {case.status.value}."
+        }), 400
+
     data = request.get_json() or {}
     return_reason = (data.get("reason") or data.get("remarks") or "").strip()
     statutory_citation = (data.get("statutory_citation") or "").strip()
@@ -585,6 +590,17 @@ def return_for_reinspection(case_id):
         remarks=f"[Cycle {prev_cycle} Return]: {return_reason}"
     )
     db.session.add(sr_rev)
+
+    # Create Notification for Field Inspector
+    notif_ret = Notification(
+        user_id=case.inspector_id,
+        case_id=case.id,
+        title="Inspection Returned for Correction",
+        message=f"Senior Officer {g.current_user.full_name} returned Case {case.case_number}: \"{return_reason}\"",
+        notification_type="CASE_RETURNED",
+        action_link=f"/inspections/{case.id}"
+    )
+    db.session.add(notif_ret)
 
     audit = AuditLog(
         case_id=case.id,
@@ -616,8 +632,10 @@ def senior_officer_action(case_id):
     if not case:
         return jsonify({"error": "Inspection case not found."}), 404
 
-    if case.status in [CaseStatus.DRAFT, CaseStatus.EVIDENCE_PENDING, CaseStatus.ANALYZING]:
-        return jsonify({"error": "Cannot adjudicate or finalize a case that is still in DRAFT/ANALYZING state."}), 400
+    if case.status not in [CaseStatus.SUBMITTED, CaseStatus.SENIOR_REVIEW]:
+        return jsonify({
+            "error": f"Cannot adjudicate or finalize case #{case.case_number}. Only cases submitted by a field inspector (SUBMITTED / SENIOR_REVIEW) can be finalized. Current status: {case.status.value}."
+        }), 400
 
     data = request.get_json() or {}
     action_str = data.get("action", "").upper()
@@ -681,6 +699,18 @@ def senior_officer_action(case_id):
         remarks=remarks
     )
     db.session.add(sr_rev)
+
+    # Notify inspector on finalized adjudication
+    if action_str in ["APPROVE_FINAL", "APPROVE_VIOLATIONS", "NON_COMPLIANT", "DISMISS_CASE"]:
+        notif_fin = Notification(
+            user_id=case.inspector_id,
+            case_id=case.id,
+            title="Inspection Case Finalized",
+            message=f"Case {case.case_number} has been finalized by Senior Officer {g.current_user.full_name} as {case.final_decision.value if case.final_decision else 'COMPLETED'}.",
+            notification_type="CASE_FINALIZED",
+            action_link=f"/inspections/{case.id}"
+        )
+        db.session.add(notif_fin)
 
     # Audit Log
     audit = AuditLog(

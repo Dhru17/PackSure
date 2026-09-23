@@ -6,6 +6,7 @@ import type { InspectionCase, Product } from '../../types';
 import { InspectorSidebar, type InspectorNavTab } from './components/InspectorSidebar';
 import { InspectorTopbar } from './components/InspectorTopbar';
 import { InspectorDashboard } from './views/InspectorDashboard';
+import { InspectorUpcomingAuditsView } from './views/InspectorUpcomingAuditsView';
 import { InspectionsView } from './views/InspectionsView';
 import { InspectionDetailView } from './views/InspectionDetailView';
 import { ProductsView } from './views/ProductsView';
@@ -89,6 +90,11 @@ export const InspectorPortal: React.FC = () => {
     c => c.status === 'RETURNED' || c.status === 'INSPECTOR_REVIEW' || c.status === 'ANALYSIS_COMPLETE'
   ).length;
 
+  // Compute upcoming scheduled audits count
+  const upcomingAuditsCount = inspectionsList.filter(
+    c => Boolean(c.scheduled_date) && (c.status === 'DRAFT' || c.status === 'EVIDENCE_PENDING')
+  ).length;
+
   // Open Inspection Details (Screen 3)
   const handleOpenCase = async (caseId: number) => {
     try {
@@ -169,7 +175,7 @@ export const InspectorPortal: React.FC = () => {
   };
 
   const currentNavTab: InspectorNavTab = 
-    (activeTab === 'home' || activeTab === 'inspections' || activeTab === 'products' || activeTab === 'notifications' || activeTab === 'profile')
+    (activeTab === 'home' || activeTab === 'upcoming_audits' || activeTab === 'inspections' || activeTab === 'products' || activeTab === 'notifications' || activeTab === 'profile')
       ? activeTab
       : 'home';
 
@@ -181,10 +187,11 @@ export const InspectorPortal: React.FC = () => {
         onSelectTab={(tab) => {
           setActiveTab(tab);
           if (tab === 'home') loadOverview();
-          if (tab === 'inspections') loadRegistry();
+          if (tab === 'upcoming_audits' || tab === 'inspections') loadRegistry();
           if (tab === 'products') loadProducts();
         }}
         unreadNotificationsCount={unreadNotificationsCount}
+        upcomingAuditsCount={upcomingAuditsCount}
       />
 
       {/* Main Workstation View Area */}
@@ -208,10 +215,19 @@ export const InspectorPortal: React.FC = () => {
               onOpenCase={handleOpenCase}
               onResumeCase={handleResumeCase}
               onViewAllInspections={() => setActiveTab('inspections')}
+              onViewUpcomingAudits={() => setActiveTab('upcoming_audits')}
             />
           )}
 
-          {/* SCREEN 2: INSPECTIONS (ACTIVE & HISTORY) */}
+          {/* SCREEN 2: UPCOMING & ASSIGNED AUDITS */}
+          {activeTab === 'upcoming_audits' && (
+            <InspectorUpcomingAuditsView
+              onOpenCase={handleOpenCase}
+              onResumeCase={handleResumeCase}
+            />
+          )}
+
+          {/* SCREEN 3: INSPECTIONS (ACTIVE & HISTORY) */}
           {activeTab === 'inspections' && (
             <InspectionsView
               inspections={inspectionsList}

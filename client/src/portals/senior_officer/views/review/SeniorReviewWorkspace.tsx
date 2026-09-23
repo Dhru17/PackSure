@@ -729,48 +729,61 @@ export const SeniorReviewWorkspace: React.FC<SeniorReviewWorkspaceProps> = ({
           {/* Determination Action Buttons */}
           <div className="pt-4 border-t border-[#E2E8F0] space-y-2">
             <span className="text-[10px] text-[#64748B] uppercase font-bold block">Final Statutory Determination</span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button
-                type="button"
-                disabled={!confirmedReviewCheckbox || isProcessingAction}
-                onClick={() => {
-                  setFinalizeDecisionType(currentCase.failed_checks > 0 ? 'APPROVE_VIOLATIONS' : 'APPROVE_COMPLIANT');
-                  setIsFinalizeModalOpen(true);
-                }}
-                className={`py-3 px-4 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-40 ${
-                  currentCase.failed_checks > 0
-                    ? 'bg-[#B91C1C] hover:bg-[#991B1B]'
-                    : 'bg-[#15803D] hover:bg-[#166534]'
-                }`}
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>
-                  {currentCase.failed_checks > 0 ? 'Finalize & Issue Notice' : 'Finalize & Approve Compliant'}
-                </span>
-              </button>
+            
+            {(currentCase.status === 'SUBMITTED' || currentCase.status === 'SENIOR_REVIEW') ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  disabled={!confirmedReviewCheckbox || isProcessingAction}
+                  onClick={() => {
+                    setFinalizeDecisionType(currentCase.failed_checks > 0 ? 'APPROVE_VIOLATIONS' : 'APPROVE_COMPLIANT');
+                    setIsFinalizeModalOpen(true);
+                  }}
+                  className={`py-3 px-4 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer disabled:opacity-40 ${
+                    currentCase.failed_checks > 0
+                      ? 'bg-[#B91C1C] hover:bg-[#991B1B]'
+                      : 'bg-[#15803D] hover:bg-[#166534]'
+                  }`}
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>
+                    {currentCase.failed_checks > 0 ? 'Finalize & Issue Notice' : 'Finalize & Approve Compliant'}
+                  </span>
+                </button>
 
-              <button
-                type="button"
-                disabled={isProcessingAction}
-                onClick={() => setIsReturnModalOpen(true)}
-                className="py-3 px-4 bg-[#B45309] hover:bg-[#92400E] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>Return for Reinspection</span>
-              </button>
+                <button
+                  type="button"
+                  disabled={isProcessingAction}
+                  onClick={() => setIsReturnModalOpen(true)}
+                  className="py-3 px-4 bg-[#B45309] hover:bg-[#92400E] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Return for Reinspection</span>
+                </button>
 
-              <button
-                type="button"
-                disabled={!confirmedReviewCheckbox || isProcessingAction}
-                onClick={() => {
-                  setFinalizeDecisionType('DISMISS_CASE');
-                  setIsFinalizeModalOpen(true);
-                }}
-                className="py-3 px-4 bg-white hover:bg-[#F8F9FA] text-[#475569] rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 border border-[#CBD5E1] cursor-pointer disabled:opacity-40"
-              >
-                <span>Dismiss Case</span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  disabled={!confirmedReviewCheckbox || isProcessingAction}
+                  onClick={() => {
+                    setFinalizeDecisionType('DISMISS_CASE');
+                    setIsFinalizeModalOpen(true);
+                  }}
+                  className="py-3 px-4 bg-white hover:bg-[#F8F9FA] text-[#475569] rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 border border-[#CBD5E1] cursor-pointer disabled:opacity-40"
+                >
+                  <span>Dismiss Case</span>
+                </button>
+              </div>
+            ) : (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0" />
+                <div>
+                  <div className="font-bold">Adjudication Actions Unavailable</div>
+                  <div className="text-[11px] text-amber-700 mt-0.5">
+                    This case is currently in status <strong>{currentCase.status}</strong>. Senior Officer determination (Finalize, Return, Approve) is only permitted once the field inspector completes field evidence capture and formally submits the case for supervisory review.
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Back Button */}

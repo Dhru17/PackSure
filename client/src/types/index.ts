@@ -258,6 +258,12 @@ export interface InspectionCase {
   case_number: string;
   product_id: number;
   product?: Product;
+  plant_id?: number;
+  plant?: Plant;
+  plant_name?: string;
+  plant_city?: string;
+  scheduled_date?: string;
+  scheduled_by_name?: string;
   inspector_id: number;
   inspector_name?: string;
   inspector_badge?: string;

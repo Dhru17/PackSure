@@ -8,7 +8,8 @@ import {
   CheckCircle2, 
   Clock, 
   ArrowRight,
-  CheckCheck
+  CheckCheck,
+  Calendar
 } from 'lucide-react';
 
 interface NotificationsViewProps {
@@ -19,7 +20,7 @@ interface NotificationsViewProps {
 
 interface NotificationItem {
   id: string;
-  type: 'RETURNED' | 'VERIFICATION_PENDING' | 'SUBMITTED' | 'APPROVED' | 'SYSTEM';
+  type: 'AUDIT_SCHEDULED' | 'RETURNED' | 'VERIFICATION_PENDING' | 'SUBMITTED' | 'APPROVED' | 'SYSTEM';
   title: string;
   description: string;
   timestamp: string;
@@ -42,6 +43,21 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
 
     inspections.forEach((c) => {
       const caseNumber = c.case_number || `PS-${c.id}`;
+
+      // 1. Scheduled Audits assigned to inspector
+      if (c.scheduled_date || c.status === 'DRAFT' || c.status === 'EVIDENCE_PENDING') {
+        const schedStr = c.scheduled_date ? new Date(c.scheduled_date).toLocaleDateString('en-GB') : 'Upcoming';
+        list.push({
+          id: `notif-sched-${c.id}`,
+          type: 'AUDIT_SCHEDULED',
+          title: 'New Audit Scheduled & Assigned',
+          description: `Compliance inspection for ${c.product?.brand_name || 'Commodity'} at ${c.plant_name || 'Designated Facility'} scheduled for ${schedStr} (${caseNumber}).`,
+          timestamp: c.scheduled_date || c.created_at,
+          isRead: readIds.has(`notif-sched-${c.id}`),
+          caseId: c.id,
+          actionLabel: 'Start Field Audit'
+        });
+      }
 
       if (c.status === 'RETURNED') {
         list.push({
@@ -213,6 +229,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
             const isReturned = n.type === 'RETURNED';
             const isPending = n.type === 'VERIFICATION_PENDING';
             const isApproved = n.type === 'APPROVED';
+            const isScheduled = n.type === 'AUDIT_SCHEDULED';
 
             return (
               <div
@@ -225,7 +242,9 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                   {/* Icon */}
                   <div
                     className={`p-2.5 rounded-xl flex-shrink-0 mt-0.5 ${
-                      isReturned
+                      isScheduled
+                        ? 'bg-[#E0F2FE] text-[#0284C7]'
+                        : isReturned
                         ? 'bg-[#FEE2E2] text-[#DC2626]'
                         : isPending
                         ? 'bg-[#FEF3C7] text-[#D97706]'
@@ -234,7 +253,9 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({
                         : 'bg-[#EFF6FF] text-[#2563EB]'
                     }`}
                   >
-                    {isReturned ? (
+                    {isScheduled ? (
+                      <Calendar className="w-5 h-5" />
+                    ) : isReturned ? (
                       <RotateCcw className="w-5 h-5" />
                     ) : isPending ? (
                       <AlertTriangle className="w-5 h-5" />
